@@ -1,161 +1,104 @@
-# Boutique API — Gestion d'inventaire de produits
+# Boutique API : gestion d'inventaire
 
-Mini-projet de l'atelier SOA : API REST pour une boutique en ligne
-(produits, catégories, stock, commandes), sécurisée par JWT.
+API REST d'une boutique en ligne (produits, catégories, stock, commandes, fournisseurs, réapprovisionnement), sécurisée par JWT.
 
-**Stack** : Node.js · Express · MySQL · JWT · bcryptjs
+**Stack** : Node.js · Express · MySQL · JWT · bcryptjs · zod · helmet · pdfkit · Swagger · Jest/Supertest
 
-## 1. Installation
+## Installation
 
 ```bash
 npm install
+cp .env.example .env      # adapter DB_PASSWORD, JWT_SECRET (obligatoire), CORS_ORIGIN, DB_SSL
 ```
 
-## 2. Base de données
+### Base de données
+- **Nouvelle base** : importer `schema.sql` (HeidiSQL, phpMyAdmin ou `mysql -u root -p --default-character-set=utf8mb4 < schema.sql`).
+- **Base v1 existante** : exécuter `migration.sql` (idempotent, ajoute les nouvelles tables sans toucher aux données).
 
-1. Démarrer MySQL.
-2. Importer le fichier `schema.sql` (à la racine du projet) :
-
-```bash
-mysql -u root -p < schema.sql
-```
-
-## 3. Configuration
-
-Copier `.env.example` en `.env` puis adapter les valeurs :
-
-```bash
-cp .env.example .env
-```
-
-Variables importantes : `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET`.
-
-## 4. Créer un compte admin
-
-L'inscription crée toujours un compte **client**. Pour avoir un admin :
-
+### Lancer
 ```bash
 npm run create-admin -- "Admin" admin@boutique.tn motdepasse123
+npm start          # ou npm run dev
 ```
+Serveur : http://localhost:3000 · Swagger : http://localhost:3000/api-docs
 
-## 5. Lancer le serveur
+## Tests
 
 ```bash
-npm start        # ou : npm run dev (redémarrage automatique)
+npm test           # 94 tests (unitaires + intégration API)
+npm run test:unit  # unitaires seulement (sans MySQL)
 ```
+Les tests d'intégration ont besoin de MySQL démarré. Ils utilisent une base séparée `boutique_test`, recréée automatiquement : la base `boutique_db` n'est jamais touchée.
 
-Le serveur démarre sur http://localhost:3000 et affiche `Connexion MySQL OK`.
+## Fonctionnalités v2
+- **Pagination, tri, recherche** : `?page=1&limit=10&tri=prix&ordre=desc&search=...` (sans `page`/`limit`, la réponse reste un tableau simple). Réponse paginée : `{ data, pagination: { page, limit, total, pages } }`. Le tri passe par une liste blanche de colonnes.
+- **Historique des mouvements de stock** (`mouvements_stock`) : vente, annulation, ajustement, réception, modification. Écrit dans la même transaction que le changement de stock, avec utilisateur, motif et stock après.
+- **Fournisseurs et achats** : bon de commande, réception (le stock augmente et un mouvement est créé), suggestions de réapprovisionnement.
+- **Statistiques** : chiffres clés, ventes par jour, chiffre d'affaires par catégorie.
+- **Facture PDF** : `GET /api/commandes/:id/facture` (propriétaire ou admin).
+- **Sécurité** : `helmet`, limitation de débit (300 req/15 min, 10 échecs de login/15 min, 20 inscriptions/h), validation `zod` avec messages en français (400), corps JSON limité à 100 ko, CORS configurable, requêtes SQL paramétrées.
 
-## Structure du projet
+## Documentation
+- Swagger : `/api-docs` (37 endpoints, vérifiés contre les vraies routes).
+- Postman : importer `docs/boutique-api.postman_collection.json` ; lancer d'abord `POST /api/auth/login`, le token est enregistré automatiquement. Régénérer avec `npm run postman`.
 
+## Structure
 ```
 boutique-api/
-├── server.js                  # point d'entrée
-├── config/db.js               # connexion MySQL (pool)
-├── middleware/auth.js         # vérification JWT + rôles
-├── routes/                    # définition des URLs
-├── controllers/               # logique de chaque endpoint
-├── scripts/createAdmin.js     # création d'un admin
-├── .env.example
-└── package.json
+├── app.js                 # application Express (importée par les tests)
+├── server.js              # démarrage (listen)
+├── config/db.js           # pool MySQL (SSL optionnel)
+├── middleware/            # auth JWT + rôles, validation zod, limiteurs
+├── schemas/               # schémas zod
+├── routes/                # URLs
+├── controllers/           # logique métier
+├── utils/                 # pagination, mouvements de stock
+├── docs/                  # swagger.js + collection Postman
+├── scripts/               # create-admin, génération Postman
+├── tests/                 # unit/ et api/
+├── schema.sql · migration.sql
+└── Dockerfile
 ```
 
 ## Endpoints
+Authentification : en-tête `Authorization: Bearer <token>`. 401 = non authentifié, 403 = rôle insuffisant.
 
-L'authentification se fait avec l'en-tête `Authorization: Bearer <token>`
-(le token est retourné par `/api/auth/login`).
-
-### Authentification
-| Méthode | Route | Accès |
+| Méthode | URL | Description |
 |---|---|---|
-| POST | `/api/auth/register` | Public |
-| POST | `/api/auth/login` | Public |
-| GET | `/api/auth/me` | Connecté |
-
-### Catégories
-| Méthode | Route | Accès |
-|---|---|---|
-| GET | `/api/categories` | Public |
-| GET | `/api/categories/:id` | Public |
-| POST | `/api/categories` | Admin |
-| PUT | `/api/categories/:id` | Admin |
-| DELETE | `/api/categories/:id` | Admin |
-
-### Produits
-| Méthode | Route | Accès |
-|---|---|---|
-| GET | `/api/produits` (filtres : `?categorie=1&search=clavier`) | Public |
-| GET | `/api/produits/alertes` | Admin |
-| GET | `/api/produits/:id` | Public |
-| POST | `/api/produits` | Admin |
-| PUT | `/api/produits/:id` | Admin |
-| DELETE | `/api/produits/:id` | Admin |
-| PATCH | `/api/produits/:id/stock` | Admin |
-
-### Commandes
-| Méthode | Route | Accès |
-|---|---|---|
-| POST | `/api/commandes` | Client |
-| GET | `/api/commandes/mes-commandes` | Client |
-| GET | `/api/commandes` (filtre : `?statut=en_attente`) | Admin |
-| GET | `/api/commandes/:id` | Propriétaire ou admin |
-| PATCH | `/api/commandes/:id/statut` | Admin |
-| PATCH | `/api/commandes/:id/annuler` | Propriétaire ou admin |
-
-### Statistiques
-| Méthode | Route | Accès |
-|---|---|---|
-| GET | `/api/stats` | Admin |
-
-## Exemples de requêtes (Postman)
-
-**Inscription**
-```
-POST /api/auth/register
-{ "nom": "Sara", "email": "sara@test.tn", "mot_de_passe": "123456" }
-```
-
-**Connexion** → retourne `token`
-```
-POST /api/auth/login
-{ "email": "sara@test.tn", "mot_de_passe": "123456" }
-```
-
-**Créer un produit (admin)**
-```
-POST /api/produits
-{ "nom": "Clavier gamer", "prix": 120, "stock": 15, "seuil_alerte": 3, "category_id": 1 }
-```
-
-**Ajuster le stock (admin)** — positif pour ajouter, négatif pour retirer
-```
-PATCH /api/produits/1/stock
-{ "ajustement": -2 }
-```
-
-**Passer une commande (client)**
-```
-POST /api/commandes
-{ "produits": [ { "produit_id": 1, "quantite": 2 }, { "produit_id": 3, "quantite": 1 } ] }
-```
-
-**Changer le statut (admin)** : `en_attente`, `confirmee`, `expediee`, `livree`
-```
-PATCH /api/commandes/1/statut
-{ "statut": "confirmee" }
-```
-
-## Règles métier
-
-- À la création d'une commande, le stock est vérifié puis diminué dans une
-  **transaction MySQL** : si un produit manque de stock, rien n'est enregistré.
-- Le prix est copié dans `lignes_commande.prix_unitaire` : un changement de prix
-  ultérieur ne modifie pas les anciennes commandes.
-- Annuler une commande (statut `en_attente` ou `confirmee`) remet les quantités en stock.
-- Un produit présent dans une commande ne peut pas être supprimé (erreur 409).
-- `GET /api/produits/alertes` liste les produits dont `stock <= seuil_alerte`.
-
-## Codes de réponse
-
-`200` OK · `201` créé · `400` données invalides · `401` non connecté ·
-`403` accès refusé · `404` introuvable · `409` conflit · `500` erreur serveur
+| POST | `/api/auth/register` | Créer un compte client |
+| POST | `/api/auth/login` | Se connecter (retourne un token JWT) |
+| GET | `/api/auth/me` | Infos de l'utilisateur connecté |
+| GET | `/api/categories` | Liste des catégories |
+| POST | `/api/categories` | Ajouter une catégorie (admin) |
+| GET | `/api/categories/{id}` | Détail d'une catégorie |
+| PUT | `/api/categories/{id}` | Modifier une catégorie (admin) |
+| DELETE | `/api/categories/{id}` | Supprimer une catégorie (admin) |
+| GET | `/api/produits` | Liste des produits (avec filtres) |
+| POST | `/api/produits` | Ajouter un produit (admin) |
+| GET | `/api/produits/alertes` | Produits en alerte de stock (admin) |
+| GET | `/api/produits/{id}` | Détail d'un produit |
+| PUT | `/api/produits/{id}` | Modifier un produit (admin) |
+| DELETE | `/api/produits/{id}` | Supprimer un produit (admin) |
+| PATCH | `/api/produits/{id}/stock` | Ajuster le stock (admin) |
+| POST | `/api/commandes` | Passer une commande (client) |
+| GET | `/api/commandes` | Toutes les commandes (admin) |
+| GET | `/api/commandes/mes-commandes` | Historique des commandes du client connecté |
+| GET | `/api/commandes/{id}` | Détail d'une commande avec ses lignes |
+| PATCH | `/api/commandes/{id}/statut` | Changer le statut d'une commande (admin) |
+| PATCH | `/api/commandes/{id}/annuler` | Annuler une commande (remet les quantités en stock) |
+| GET | `/api/stats` | Tableau de bord (admin) |
+| GET | `/api/commandes/{id}/facture` | Facture PDF (propriétaire ou admin) |
+| GET | `/api/stats/ventes` | Ventes par jour (admin) |
+| GET | `/api/stats/par-categorie` | Chiffre d'affaires par catégorie (admin) |
+| GET | `/api/mouvements` | Historique du stock (admin) |
+| GET | `/api/fournisseurs` | Liste des fournisseurs (admin) |
+| POST | `/api/fournisseurs` | Ajouter un fournisseur (admin) |
+| GET | `/api/fournisseurs/{id}` | Détail d'un fournisseur (admin) |
+| PUT | `/api/fournisseurs/{id}` | Modifier un fournisseur (admin) |
+| DELETE | `/api/fournisseurs/{id}` | Supprimer un fournisseur (admin) |
+| GET | `/api/achats` | Liste des achats (admin) |
+| POST | `/api/achats` | Créer un bon de commande fournisseur (admin) |
+| GET | `/api/achats/suggestions` | Produits à réapprovisionner (admin) |
+| GET | `/api/achats/{id}` | Détail d'un achat (admin) |
+| PATCH | `/api/achats/{id}/recevoir` | Réceptionner un achat (admin) |
+| PATCH | `/api/achats/{id}/annuler` | Annuler un achat (admin) |

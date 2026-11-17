@@ -5,14 +5,8 @@ const pool = require('../config/db');
 // POST /api/auth/register
 exports.register = async (req, res, next) => {
   try {
+    // nom, email et mot de passe sont déjà validés (middleware valider(schemas.register))
     const { nom, email, mot_de_passe } = req.body;
-
-    if (!nom || !email || !mot_de_passe) {
-      return res.status(400).json({ message: 'nom, email et mot_de_passe sont obligatoires' });
-    }
-    if (mot_de_passe.length < 6) {
-      return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 6 caractères' });
-    }
 
     const hash = await bcrypt.hash(mot_de_passe, 10);
 
@@ -38,10 +32,6 @@ exports.register = async (req, res, next) => {
 exports.login = async (req, res, next) => {
   try {
     const { email, mot_de_passe } = req.body;
-
-    if (!email || !mot_de_passe) {
-      return res.status(400).json({ message: 'email et mot_de_passe sont obligatoires' });
-    }
 
     const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
     const user = rows[0];

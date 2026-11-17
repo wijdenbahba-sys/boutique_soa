@@ -27,14 +27,17 @@ const spec = {
   openapi: '3.0.3',
   info: {
     title: 'Boutique API — Gestion d\'inventaire',
-    version: '1.0.0',
+    version: '2.0.0',
     description:
       "API REST de gestion d'inventaire de produits pour une boutique en ligne (mini-projet atelier SOA).\n\n" +
       '**Comment tester les routes protégées :**\n' +
       '1. Appeler `POST /api/auth/login` et copier le `token` de la réponse.\n' +
       '2. Cliquer sur le bouton **Authorize** (en haut à droite) et coller le token.\n' +
       '3. Les cadenas se ferment : toutes les routes protégées sont maintenant utilisables.\n\n' +
-      '**Rôles :** `client` (passe des commandes) et `admin` (gère produits, stock et commandes).',
+      '**Rôles :** `client` (passe des commandes) et `admin` (gère produits, stock, commandes, fournisseurs et achats).\n\n' +
+      '**Sécurité :** JWT, mots de passe hachés (bcrypt), validation des entrées, en-têtes helmet, limitation de débit ' +
+      '(réponse `429` après trop de requêtes ou de tentatives de connexion).\n\n' +
+      '**Pagination :** les listes acceptent `?page=1&limit=10` (réponse `{ data, pagination }`) et un tri `?tri=...&ordre=asc|desc`.',
   },
   servers: [{ url: '/', description: 'Serveur courant' }],
   tags: [
@@ -43,6 +46,9 @@ const spec = {
     { name: 'Produits', description: 'Gestion des produits et du stock' },
     { name: 'Commandes', description: 'Passage et suivi des commandes' },
     { name: 'Statistiques', description: "Tableau de bord de l'administrateur" },
+    { name: 'Mouvements de stock', description: 'Historique de tous les changements de stock (traçabilité)' },
+    { name: 'Fournisseurs', description: 'Gestion des fournisseurs' },
+    { name: 'Achats', description: 'Réapprovisionnement : bons de commande fournisseur, réception = stock +' },
   ],
 
   components: {
@@ -141,6 +147,86 @@ const spec = {
             },
           },
         ],
+      },
+      Pagination: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer', example: 1 },
+          limit: { type: 'integer', example: 10 },
+          total: { type: 'integer', example: 42 },
+          pages: { type: 'integer', example: 5 },
+        },
+      },
+      Mouvement: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer', example: 12 },
+          produit_id: { type: 'integer', example: 1 },
+          produit_nom: { type: 'string', example: 'Clavier sans fil' },
+          type: {
+            type: 'string',
+            enum: ['initial', 'vente', 'annulation', 'ajustement', 'reception', 'modification'],
+            example: 'vente',
+          },
+          quantite: { type: 'integer', description: 'Variation signée (+10 entrée, -3 sortie)', example: -3 },
+          stock_apres: { type: 'integer', example: 27 },
+          utilisateur_nom: { type: 'string', nullable: true, example: 'Admin' },
+          commande_id: { type: 'integer', nullable: true },
+          achat_id: { type: 'integer', nullable: true },
+          motif: { type: 'string', nullable: true, example: 'Commande n°5' },
+          created_at: { type: 'string', format: 'date-time' },
+        },
+      },
+      Fournisseur: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer', example: 1 },
+          nom: { type: 'string', example: 'TechDistrib Tunisie' },
+          email: { type: 'string', nullable: true, example: 'contact@techdistrib.tn' },
+          telephone: { type: 'string', nullable: true, example: '71 000 111' },
+          adresse: { type: 'string', nullable: true, example: 'Tunis' },
+        },
+      },
+      FournisseurInput: {
+        type: 'object',
+        required: ['nom'],
+        properties: {
+          nom: { type: 'string', example: 'TechDistrib Tunisie' },
+          email: { type: 'string', example: 'contact@techdistrib.tn' },
+          telephone: { type: 'string', example: '71 000 111' },
+          adresse: { type: 'string', example: 'Tunis' },
+        },
+      },
+      Achat: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer', example: 1 },
+          fournisseur_id: { type: 'integer', example: 1 },
+          fournisseur_nom: { type: 'string', example: 'TechDistrib Tunisie' },
+          statut: { type: 'string', enum: ['commande', 'recu', 'annule'], example: 'commande' },
+          total: { type: 'number', example: 505 },
+          date_achat: { type: 'string', format: 'date-time' },
+          date_reception: { type: 'string', format: 'date-time', nullable: true },
+        },
+      },
+      AchatInput: {
+        type: 'object',
+        required: ['fournisseur_id', 'lignes'],
+        properties: {
+          fournisseur_id: { type: 'integer', example: 1 },
+          lignes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['produit_id', 'quantite', 'cout_unitaire'],
+              properties: {
+                produit_id: { type: 'integer', example: 3 },
+                quantite: { type: 'integer', example: 20 },
+                cout_unitaire: { type: 'number', example: 60 },
+              },
+            },
+          },
+        },
       },
       CommandeInput: {
         type: 'object',
@@ -317,11 +403,26 @@ const spec = {
         parameters: [
           { name: 'categorie', in: 'query', description: 'Filtrer par id de catégorie', schema: { type: 'integer' } },
           { name: 'search', in: 'query', description: 'Recherche dans le nom et la description', schema: { type: 'string' } },
+          { name: 'alerte', in: 'query', description: 'true : seulement les produits dont le stock est sous le seuil', schema: { type: 'boolean' } },
+          { name: 'tri', in: 'query', description: 'Colonne de tri', schema: { type: 'string', enum: ['nom', 'prix', 'stock', 'date'] } },
+          { name: 'ordre', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
+          { name: 'page', in: 'query', description: 'Active la pagination', schema: { type: 'integer', example: 1 } },
+          { name: 'limit', in: 'query', description: '10 par défaut, 100 maximum', schema: { type: 'integer', example: 10 } },
         ],
+        description:
+          'Sans `page` ni `limit` : un simple tableau de produits. Avec `page` ou `limit` : `{ data: [...], pagination: {...} }`.',
         responses: {
-          200: reponse('Liste des produits', {
-            type: 'array',
-            items: { $ref: '#/components/schemas/Produit' },
+          200: reponse('Liste des produits (tableau, ou { data, pagination } si paginé)', {
+            oneOf: [
+              { type: 'array', items: { $ref: '#/components/schemas/Produit' } },
+              {
+                type: 'object',
+                properties: {
+                  data: { type: 'array', items: { $ref: '#/components/schemas/Produit' } },
+                  pagination: { $ref: '#/components/schemas/Pagination' },
+                },
+              },
+            ],
           }),
         },
       },
@@ -415,9 +516,12 @@ const spec = {
             {
               type: 'object',
               required: ['ajustement'],
-              properties: { ajustement: { type: 'integer', example: 10 } },
+              properties: {
+                ajustement: { type: 'integer', example: 10 },
+                motif: { type: 'string', description: "Raison, conservée dans l'historique", example: 'Inventaire' },
+              },
             },
-            { ajustement: 10 }
+            { ajustement: 10, motif: 'Inventaire' }
           ),
         },
         responses: {
@@ -481,11 +585,23 @@ const spec = {
             description: 'Filtrer par statut',
             schema: { type: 'string', enum: ['en_attente', 'confirmee', 'expediee', 'livree', 'annulee'] },
           },
+          { name: 'tri', in: 'query', schema: { type: 'string', enum: ['date', 'total', 'statut', 'id'] } },
+          { name: 'ordre', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
+          { name: 'page', in: 'query', description: 'Active la pagination', schema: { type: 'integer', example: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', example: 10 } },
         ],
         responses: {
-          200: reponse('Liste des commandes', {
-            type: 'array',
-            items: { $ref: '#/components/schemas/Commande' },
+          200: reponse('Liste des commandes (tableau, ou { data, pagination } si paginé)', {
+            oneOf: [
+              { type: 'array', items: { $ref: '#/components/schemas/Commande' } },
+              {
+                type: 'object',
+                properties: {
+                  data: { type: 'array', items: { $ref: '#/components/schemas/Commande' } },
+                  pagination: { $ref: '#/components/schemas/Pagination' },
+                },
+              },
+            ],
           }),
           401: erreur('Token manquant'),
           403: erreur('Accès refusé'),
@@ -589,6 +705,8 @@ const spec = {
             type: 'object',
             properties: {
               total_produits: { type: 'integer' },
+              valeur_stock: { type: 'number', description: 'Somme prix x stock' },
+              achats_en_cours: { type: 'integer', description: 'Achats fournisseurs pas encore reçus' },
               produits_en_alerte: { type: 'integer' },
               total_commandes: { type: 'integer' },
               chiffre_affaires: { type: 'number' },
@@ -614,6 +732,317 @@ const spec = {
           }),
           401: erreur('Token manquant'),
           403: erreur('Accès refusé'),
+        },
+      },
+    },
+
+    // =====================  FACTURE PDF  =====================
+    '/api/commandes/{id}/facture': {
+      get: {
+        tags: ['Commandes'],
+        summary: 'Facture PDF (propriétaire ou admin)',
+        description: "Génère la facture au format PDF. Impossible pour une commande annulée.",
+        security: securite,
+        parameters: [idParam()],
+        responses: {
+          200: { description: 'Fichier PDF', content: { 'application/pdf': { schema: { type: 'string', format: 'binary' } } } },
+          400: erreur('Commande annulée'),
+          401: erreur('Token manquant'),
+          403: erreur('Ce n\'est pas votre commande'),
+          404: erreur('Commande introuvable'),
+        },
+      },
+    },
+
+    // =====================  STATISTIQUES (graphiques)  =====================
+    '/api/stats/ventes': {
+      get: {
+        tags: ['Statistiques'],
+        summary: 'Ventes par jour (admin)',
+        description: "Une ligne par jour, les jours sans vente valent 0 : prêt pour un graphique. Commandes annulées exclues.",
+        security: securite,
+        parameters: [
+          { name: 'jours', in: 'query', description: 'Période en jours (1 à 365, 30 par défaut)', schema: { type: 'integer', example: 30 } },
+        ],
+        responses: {
+          200: reponse('Ventes par jour', {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                date: { type: 'string', example: '2026-11-08' },
+                commandes: { type: 'integer', example: 2 },
+                chiffre_affaires: { type: 'number', example: 230.5 },
+              },
+            },
+          }),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+        },
+      },
+    },
+    '/api/stats/par-categorie': {
+      get: {
+        tags: ['Statistiques'],
+        summary: "Chiffre d'affaires par catégorie (admin)",
+        security: securite,
+        responses: {
+          200: reponse('Ventes par catégorie', {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                categorie: { type: 'string', example: 'Informatique' },
+                quantite_vendue: { type: 'integer', example: 12 },
+                chiffre_affaires: { type: 'number', example: 540 },
+              },
+            },
+          }),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+        },
+      },
+    },
+
+    // =====================  MOUVEMENTS DE STOCK  =====================
+    '/api/mouvements': {
+      get: {
+        tags: ['Mouvements de stock'],
+        summary: 'Historique du stock (admin)',
+        description:
+          'Chaque vente, annulation, ajustement, réception fournisseur ou modification de fiche laisse une trace : ' +
+          'variation, stock après, utilisateur, motif. Toujours paginé.',
+        security: securite,
+        parameters: [
+          { name: 'produit_id', in: 'query', schema: { type: 'integer' } },
+          {
+            name: 'type',
+            in: 'query',
+            schema: { type: 'string', enum: ['initial', 'vente', 'annulation', 'ajustement', 'reception', 'modification'] },
+          },
+          { name: 'du', in: 'query', description: 'Date de début (AAAA-MM-JJ)', schema: { type: 'string', example: '2026-11-01' } },
+          { name: 'au', in: 'query', description: 'Date de fin (AAAA-MM-JJ)', schema: { type: 'string', example: '2026-11-30' } },
+          { name: 'page', in: 'query', schema: { type: 'integer', example: 1 } },
+          { name: 'limit', in: 'query', description: '20 par défaut', schema: { type: 'integer', example: 20 } },
+        ],
+        responses: {
+          200: reponse('Mouvements, du plus récent au plus ancien', {
+            type: 'object',
+            properties: {
+              data: { type: 'array', items: { $ref: '#/components/schemas/Mouvement' } },
+              pagination: { $ref: '#/components/schemas/Pagination' },
+            },
+          }),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+        },
+      },
+    },
+
+    // =====================  FOURNISSEURS  =====================
+    '/api/fournisseurs': {
+      get: {
+        tags: ['Fournisseurs'],
+        summary: 'Liste des fournisseurs (admin)',
+        security: securite,
+        responses: {
+          200: reponse('Fournisseurs', { type: 'array', items: { $ref: '#/components/schemas/Fournisseur' } }),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+        },
+      },
+      post: {
+        tags: ['Fournisseurs'],
+        summary: 'Ajouter un fournisseur (admin)',
+        security: securite,
+        requestBody: { required: true, content: json({ $ref: '#/components/schemas/FournisseurInput' }) },
+        responses: {
+          201: reponse('Fournisseur créé', { $ref: '#/components/schemas/Fournisseur' }),
+          400: erreur('Données invalides'),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+          409: erreur('Ce fournisseur existe déjà'),
+        },
+      },
+    },
+    '/api/fournisseurs/{id}': {
+      get: {
+        tags: ['Fournisseurs'],
+        summary: "Détail d'un fournisseur (admin)",
+        security: securite,
+        parameters: [idParam()],
+        responses: {
+          200: reponse('Fournisseur', { $ref: '#/components/schemas/Fournisseur' }),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+          404: erreur('Fournisseur introuvable'),
+        },
+      },
+      put: {
+        tags: ['Fournisseurs'],
+        summary: 'Modifier un fournisseur (admin)',
+        security: securite,
+        parameters: [idParam()],
+        requestBody: { required: true, content: json({ $ref: '#/components/schemas/FournisseurInput' }) },
+        responses: {
+          200: reponse('Fournisseur modifié', { $ref: '#/components/schemas/Fournisseur' }),
+          400: erreur('Données invalides'),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+          404: erreur('Fournisseur introuvable'),
+          409: erreur('Ce fournisseur existe déjà'),
+        },
+      },
+      delete: {
+        tags: ['Fournisseurs'],
+        summary: 'Supprimer un fournisseur (admin)',
+        description: 'Refusé (409) si le fournisseur a des achats enregistrés.',
+        security: securite,
+        parameters: [idParam()],
+        responses: {
+          200: reponse('Fournisseur supprimé', { $ref: '#/components/schemas/Message' }),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+          404: erreur('Fournisseur introuvable'),
+          409: erreur('Fournisseur utilisé par des achats'),
+        },
+      },
+    },
+
+    // =====================  ACHATS (réapprovisionnement)  =====================
+    '/api/achats': {
+      get: {
+        tags: ['Achats'],
+        summary: 'Liste des achats (admin)',
+        security: securite,
+        parameters: [
+          { name: 'statut', in: 'query', schema: { type: 'string', enum: ['commande', 'recu', 'annule'] } },
+        ],
+        responses: {
+          200: reponse('Achats', { type: 'array', items: { $ref: '#/components/schemas/Achat' } }),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+        },
+      },
+      post: {
+        tags: ['Achats'],
+        summary: 'Créer un bon de commande fournisseur (admin)',
+        description: "Le stock n'augmente qu'à la réception (`PATCH /api/achats/{id}/recevoir`).",
+        security: securite,
+        requestBody: {
+          required: true,
+          content: json(
+            { $ref: '#/components/schemas/AchatInput' },
+            { fournisseur_id: 1, lignes: [{ produit_id: 3, quantite: 20, cout_unitaire: 60 }] }
+          ),
+        },
+        responses: {
+          201: reponse('Achat créé', {
+            type: 'object',
+            properties: {
+              id: { type: 'integer' },
+              statut: { type: 'string', example: 'commande' },
+              total: { type: 'number', example: 1200 },
+              message: { type: 'string' },
+            },
+          }),
+          400: erreur('Données invalides'),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+          404: erreur('Fournisseur ou produit introuvable'),
+        },
+      },
+    },
+    '/api/achats/suggestions': {
+      get: {
+        tags: ['Achats'],
+        summary: 'Produits à réapprovisionner (admin)',
+        description: 'Produits sous leur seuil d\'alerte, avec une quantité conseillée (de quoi remonter à 2 x le seuil).',
+        security: securite,
+        responses: {
+          200: reponse('Suggestions', {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                produit_id: { type: 'integer' },
+                nom: { type: 'string', example: 'Écouteurs Bluetooth' },
+                stock: { type: 'integer', example: 4 },
+                seuil_alerte: { type: 'integer', example: 5 },
+                quantite_suggeree: { type: 'integer', example: 6 },
+              },
+            },
+          }),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+        },
+      },
+    },
+    '/api/achats/{id}': {
+      get: {
+        tags: ['Achats'],
+        summary: "Détail d'un achat (admin)",
+        security: securite,
+        parameters: [idParam()],
+        responses: {
+          200: reponse('Achat avec ses lignes', {
+            allOf: [
+              { $ref: '#/components/schemas/Achat' },
+              {
+                type: 'object',
+                properties: {
+                  lignes: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        produit_id: { type: 'integer' },
+                        produit_nom: { type: 'string' },
+                        quantite: { type: 'integer' },
+                        cout_unitaire: { type: 'number' },
+                        sous_total: { type: 'number' },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          }),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+          404: erreur('Achat introuvable'),
+        },
+      },
+    },
+    '/api/achats/{id}/recevoir': {
+      patch: {
+        tags: ['Achats'],
+        summary: 'Réceptionner un achat (admin)',
+        description: 'Le stock de chaque produit augmente (transaction) et chaque entrée est tracée dans l\'historique. Une seule réception possible.',
+        security: securite,
+        parameters: [idParam()],
+        responses: {
+          200: reponse('Achat reçu', { $ref: '#/components/schemas/Message' }),
+          400: erreur('Achat déjà reçu ou annulé'),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+          404: erreur('Achat introuvable'),
+        },
+      },
+    },
+    '/api/achats/{id}/annuler': {
+      patch: {
+        tags: ['Achats'],
+        summary: 'Annuler un achat (admin)',
+        description: "Possible seulement tant que l'achat n'est pas reçu.",
+        security: securite,
+        parameters: [idParam()],
+        responses: {
+          200: reponse('Achat annulé', { $ref: '#/components/schemas/Message' }),
+          400: erreur('Achat déjà reçu ou annulé'),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+          404: erreur('Achat introuvable'),
         },
       },
     },

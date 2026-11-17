@@ -1,0 +1,1218 @@
+{
+  "info": {
+    "name": "Boutique API - Gestion d'inventaire",
+    "description": "Exécuter d'abord \"POST /api/auth/login\" : le token est stocké automatiquement dans la variable {{token}}.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentification",
+      "item": [
+        {
+          "name": "POST /api/auth/register - Créer un compte client",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Le rôle est toujours `client`. Un admin se crée avec `npm run create-admin`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nom\": \"Sara\",\n  \"email\": \"sara@test.tn\",\n  \"mot_de_passe\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "POST /api/auth/login - Se connecter (retourne un token JWT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Se connecter (retourne un token JWT)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@boutique.tn\",\n  \"mot_de_passe\": \"motdepasse123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('token', pm.response.json().token);",
+                  "}",
+                  "pm.test('statut 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/auth/me - Infos de l'utilisateur connecté",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Infos de l'utilisateur connecté"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catégories",
+      "item": [
+        {
+          "name": "GET /api/categories - Liste des catégories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "categories"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Liste des catégories"
+          }
+        },
+        {
+          "name": "POST /api/categories - Ajouter une catégorie (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "categories"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Ajouter une catégorie (admin)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nom\": \"Informatique\",\n  \"description\": \"Ordinateurs et accessoires\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/categories/{id} - Détail d'une catégorie",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/categories/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "categories",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Détail d'une catégorie"
+          }
+        },
+        {
+          "name": "PUT /api/categories/{id} - Modifier une catégorie (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/categories/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "categories",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Modifier une catégorie (admin)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nom\": \"Informatique\",\n  \"description\": \"Ordinateurs et accessoires\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/categories/{id} - Supprimer une catégorie (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/categories/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "categories",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Les produits de cette catégorie sont conservés (leur catégorie devient vide)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Produits",
+      "item": [
+        {
+          "name": "GET /api/produits - Liste des produits (avec filtres)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/produits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "produits"
+              ],
+              "query": [
+                {
+                  "key": "categorie",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "alerte",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "tri",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "ordre",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "disabled": true
+                }
+              ],
+              "variable": []
+            },
+            "description": "Sans `page` ni `limit` : un simple tableau de produits. Avec `page` ou `limit` : `{ data: [...], pagination: {...} }`."
+          }
+        },
+        {
+          "name": "POST /api/produits - Ajouter un produit (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/produits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "produits"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Ajouter un produit (admin)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nom\": \"Clavier gamer\",\n  \"description\": \"Clavier mécanique rétroéclairé\",\n  \"prix\": 120,\n  \"stock\": 15,\n  \"seuil_alerte\": 3,\n  \"image_url\": \"texte\",\n  \"category_id\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/produits/alertes - Produits en alerte de stock (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/produits/alertes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "produits",
+                "alertes"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Retourne les produits dont `stock <= seuil_alerte`."
+          }
+        },
+        {
+          "name": "GET /api/produits/{id} - Détail d'un produit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/produits/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "produits",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Détail d'un produit"
+          }
+        },
+        {
+          "name": "PUT /api/produits/{id} - Modifier un produit (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/produits/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "produits",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Modifier un produit (admin)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nom\": \"Clavier gamer\",\n  \"description\": \"Clavier mécanique rétroéclairé\",\n  \"prix\": 120,\n  \"stock\": 15,\n  \"seuil_alerte\": 3,\n  \"image_url\": \"texte\",\n  \"category_id\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/produits/{id} - Supprimer un produit (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/produits/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "produits",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Impossible si le produit figure déjà dans une commande (409)."
+          }
+        },
+        {
+          "name": "PATCH /api/produits/{id}/stock - Ajuster le stock (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/produits/:id/stock",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "produits",
+                ":id",
+                "stock"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Valeur positive pour ajouter du stock, négative pour en retirer. Le stock ne peut pas devenir négatif.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ajustement\": 10,\n  \"motif\": \"Inventaire\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Commandes",
+      "item": [
+        {
+          "name": "POST /api/commandes - Passer une commande (client)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/commandes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "commandes"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Vérifie le stock, calcule le total et décrémente le stock dans une **transaction MySQL** : si un produit manque de stock, rien n'est enregistré.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"produits\": [\n    {\n      \"produit_id\": 1,\n      \"quantite\": 2\n    },\n    {\n      \"produit_id\": 2,\n      \"quantite\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/commandes - Toutes les commandes (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/commandes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "commandes"
+              ],
+              "query": [
+                {
+                  "key": "statut",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "tri",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "ordre",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "disabled": true
+                }
+              ],
+              "variable": []
+            },
+            "description": "Toutes les commandes (admin)"
+          }
+        },
+        {
+          "name": "GET /api/commandes/mes-commandes - Historique des commandes du client connecté",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/commandes/mes-commandes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "commandes",
+                "mes-commandes"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Historique des commandes du client connecté"
+          }
+        },
+        {
+          "name": "GET /api/commandes/{id} - Détail d'une commande avec ses lignes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/commandes/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "commandes",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Accessible au propriétaire de la commande ou à un admin."
+          }
+        },
+        {
+          "name": "PATCH /api/commandes/{id}/statut - Changer le statut d'une commande (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/commandes/:id/statut",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "commandes",
+                ":id",
+                "statut"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Changer le statut d'une commande (admin)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"statut\": \"confirmee\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/commandes/{id}/annuler - Annuler une commande (remet les quantités en stock)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/commandes/:id/annuler",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "commandes",
+                ":id",
+                "annuler"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Possible pour le propriétaire ou un admin, tant que la commande est `en_attente` ou `confirmee`."
+          }
+        },
+        {
+          "name": "GET /api/commandes/{id}/facture - Facture PDF (propriétaire ou admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/commandes/:id/facture",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "commandes",
+                ":id",
+                "facture"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Génère la facture au format PDF. Impossible pour une commande annulée."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Statistiques",
+      "item": [
+        {
+          "name": "GET /api/stats - Tableau de bord (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "stats"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Tableau de bord (admin)"
+          }
+        },
+        {
+          "name": "GET /api/stats/ventes - Ventes par jour (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stats/ventes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "stats",
+                "ventes"
+              ],
+              "query": [
+                {
+                  "key": "jours",
+                  "value": "",
+                  "disabled": true
+                }
+              ],
+              "variable": []
+            },
+            "description": "Une ligne par jour, les jours sans vente valent 0 : prêt pour un graphique. Commandes annulées exclues."
+          }
+        },
+        {
+          "name": "GET /api/stats/par-categorie - Chiffre d'affaires par catégorie (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stats/par-categorie",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "stats",
+                "par-categorie"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Chiffre d'affaires par catégorie (admin)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Mouvements de stock",
+      "item": [
+        {
+          "name": "GET /api/mouvements - Historique du stock (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/mouvements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "mouvements"
+              ],
+              "query": [
+                {
+                  "key": "produit_id",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "type",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "du",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "au",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "disabled": true
+                }
+              ],
+              "variable": []
+            },
+            "description": "Chaque vente, annulation, ajustement, réception fournisseur ou modification de fiche laisse une trace : variation, stock après, utilisateur, motif. Toujours paginé."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Fournisseurs",
+      "item": [
+        {
+          "name": "GET /api/fournisseurs - Liste des fournisseurs (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/fournisseurs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "fournisseurs"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Liste des fournisseurs (admin)"
+          }
+        },
+        {
+          "name": "POST /api/fournisseurs - Ajouter un fournisseur (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/fournisseurs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "fournisseurs"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Ajouter un fournisseur (admin)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nom\": \"TechDistrib Tunisie\",\n  \"email\": \"contact@techdistrib.tn\",\n  \"telephone\": \"71 000 111\",\n  \"adresse\": \"Tunis\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/fournisseurs/{id} - Détail d'un fournisseur (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/fournisseurs/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "fournisseurs",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Détail d'un fournisseur (admin)"
+          }
+        },
+        {
+          "name": "PUT /api/fournisseurs/{id} - Modifier un fournisseur (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/fournisseurs/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "fournisseurs",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Modifier un fournisseur (admin)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nom\": \"TechDistrib Tunisie\",\n  \"email\": \"contact@techdistrib.tn\",\n  \"telephone\": \"71 000 111\",\n  \"adresse\": \"Tunis\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/fournisseurs/{id} - Supprimer un fournisseur (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/fournisseurs/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "fournisseurs",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Refusé (409) si le fournisseur a des achats enregistrés."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Achats",
+      "item": [
+        {
+          "name": "GET /api/achats - Liste des achats (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/achats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "achats"
+              ],
+              "query": [
+                {
+                  "key": "statut",
+                  "value": "",
+                  "disabled": true
+                }
+              ],
+              "variable": []
+            },
+            "description": "Liste des achats (admin)"
+          }
+        },
+        {
+          "name": "POST /api/achats - Créer un bon de commande fournisseur (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/achats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "achats"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Le stock n'augmente qu'à la réception (`PATCH /api/achats/{id}/recevoir`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fournisseur_id\": 1,\n  \"lignes\": [\n    {\n      \"produit_id\": 3,\n      \"quantite\": 20,\n      \"cout_unitaire\": 60\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/achats/suggestions - Produits à réapprovisionner (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/achats/suggestions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "achats",
+                "suggestions"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Produits sous leur seuil d'alerte, avec une quantité conseillée (de quoi remonter à 2 x le seuil)."
+          }
+        },
+        {
+          "name": "GET /api/achats/{id} - Détail d'un achat (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/achats/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "achats",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Détail d'un achat (admin)"
+          }
+        },
+        {
+          "name": "PATCH /api/achats/{id}/recevoir - Réceptionner un achat (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/achats/:id/recevoir",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "achats",
+                ":id",
+                "recevoir"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Le stock de chaque produit augmente (transaction) et chaque entrée est tracée dans l'historique. Une seule réception possible."
+          }
+        },
+        {
+          "name": "PATCH /api/achats/{id}/annuler - Annuler un achat (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/achats/:id/annuler",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "achats",
+                ":id",
+                "annuler"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Possible seulement tant que l'achat n'est pas reçu."
+          }
+        }
+      ]
+    }
+  ]
+}

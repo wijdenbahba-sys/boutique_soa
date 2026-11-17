@@ -26,16 +26,12 @@ exports.getOne = async (req, res, next) => {
 // POST /api/categories
 exports.create = async (req, res, next) => {
   try {
-    const { nom, description } = req.body;
-    if (!nom) {
-      return res.status(400).json({ message: 'Le nom est obligatoire' });
-    }
-
+    const { nom, description } = req.body; // déjà validés par le middleware
     const [result] = await pool.query(
       'INSERT INTO categories (nom, description) VALUES (?, ?)',
-      [nom, description || null]
+      [nom, description]
     );
-    res.status(201).json({ id: result.insertId, nom, description: description || null });
+    res.status(201).json({ id: result.insertId, nom, description });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ message: 'Cette catégorie existe déjà' });
@@ -48,18 +44,14 @@ exports.create = async (req, res, next) => {
 exports.update = async (req, res, next) => {
   try {
     const { nom, description } = req.body;
-    if (!nom) {
-      return res.status(400).json({ message: 'Le nom est obligatoire' });
-    }
-
     const [result] = await pool.query(
       'UPDATE categories SET nom = ?, description = ? WHERE id = ?',
-      [nom, description || null, req.params.id]
+      [nom, description, req.params.id]
     );
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Catégorie introuvable' });
     }
-    res.json({ id: Number(req.params.id), nom, description: description || null });
+    res.json({ id: Number(req.params.id), nom, description });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ message: 'Cette catégorie existe déjà' });

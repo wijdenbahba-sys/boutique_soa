@@ -4,6 +4,10 @@ const ctrl = require('../controllers/statsController');
 
 const router = express.Router();
 
-router.get('/', verifierToken, autoriser('admin'), ctrl.getStats);
+router.use(verifierToken, autoriser('admin'));
+
+router.get('/', ctrl.getStats);
+router.get('/ventes', ctrl.getVentes);
+router.get('/par-categorie', ctrl.getParCategorie);
 
 module.exports = router;
