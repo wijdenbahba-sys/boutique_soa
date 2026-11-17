@@ -1,31 +1,44 @@
 import { Fragment, useEffect, useState } from 'react';
 import { useApi } from '../../useApi.js';
+import { useT } from '../../i18n.jsx';
+import BoutonFacture from '../../components/BoutonFacture.jsx';
+import Pagination from '../../components/Pagination.jsx';
 import { STATUTS, formaterDate, formaterPrix } from '../../utils.js';
 
 // Statuts qu'un admin peut choisir dans la liste (l'annulation a son propre bouton : elle remet le stock)
 const STATUTS_CHOISISSABLES = ['en_attente', 'confirmee', 'expediee', 'livree'];
+const PAR_PAGE = 10;
 
 export default function AdminCommandes() {
   const appeler = useApi();
+  const { t } = useT();
   const [commandes, setCommandes] = useState([]);
+  const [pagination, setPagination] = useState(null);
   const [filtre, setFiltre] = useState('');
+  const [page, setPage] = useState(1);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState('');
   const [succes, setSucces] = useState('');
   const [ouverte, setOuverte] = useState(null); // commande dont le détail est affiché
   const [details, setDetails] = useState({}); // détails déjà chargés
 
-  // Recharge la liste à chaque changement de filtre (GET /api/commandes?statut=...)
+  // Recharge la liste à chaque changement de filtre ou de page (GET /api/commandes?statut=...&page=...)
   useEffect(() => {
     let annule = false;
     setChargement(true);
     setErreur('');
-    appeler(`/api/commandes${filtre ? `?statut=${filtre}` : ''}`)
-      .then((data) => { if (!annule) setCommandes(data); })
+    const params = new URLSearchParams({ page, limit: PAR_PAGE });
+    if (filtre) params.set('statut', filtre);
+    appeler(`/api/commandes?${params}`)
+      .then((reponse) => {
+        if (annule) return;
+        setCommandes(reponse.data);
+        setPagination(reponse.pagination);
+      })
       .catch((err) => { if (!annule && err.status !== 401) setErreur(err.message); })
       .finally(() => { if (!annule) setChargement(false); });
     return () => { annule = true; };
-  }, [appeler, filtre]);
+  }, [appeler, filtre, page]);
 
   async function changerStatut(commande, statut) {
     setErreur('');
@@ -33,20 +46,20 @@ export default function AdminCommandes() {
     try {
       await appeler(`/api/commandes/${commande.id}/statut`, { method: 'PATCH', body: { statut } });
       setCommandes((courant) => courant.map((c) => (c.id === commande.id ? { ...c, statut } : c)));
-      setSucces(`Commande n°${commande.id} : statut « ${STATUTS[statut].texte} ».`);
+      setSucces(t('commandesAdmin.statutChange', { id: commande.id, statut: t(`statut.${statut}`) }));
     } catch (err) {
       if (err.status !== 401) setErreur(err.message);
     }
   }
 
   async function annuler(commande) {
-    if (!window.confirm(`Annuler la commande n°${commande.id} ? Le stock sera remis à jour.`)) return;
+    if (!window.confirm(t('commandesAdmin.confirmerAnnuler', { id: commande.id }))) return;
     setErreur('');
     setSucces('');
     try {
       await appeler(`/api/commandes/${commande.id}/annuler`, { method: 'PATCH' });
       setCommandes((courant) => courant.map((c) => (c.id === commande.id ? { ...c, statut: 'annulee' } : c)));
-      setSucces(`Commande n°${commande.id} annulée, stock remis à jour.`);
+      setSucces(t('commandesAdmin.annulee', { id: commande.id }));
     } catch (err) {
       if (err.status !== 401) setErreur(err.message);
     }
@@ -70,38 +83,42 @@ export default function AdminCommandes() {
   return (
     <>
       <div className="entete-section">
-        <h1>Commandes</h1>
-        <select value={filtre} onChange={(e) => setFiltre(e.target.value)} aria-label="Filtrer par statut">
-          <option value="">Tous les statuts</option>
-          {Object.entries(STATUTS).map(([cle, s]) => (
-            <option key={cle} value={cle}>{s.texte}</option>
+        <h1>{t('commandesAdmin.titre')}</h1>
+        <select
+          value={filtre}
+          onChange={(e) => { setFiltre(e.target.value); setPage(1); }}
+          aria-label={t('commandesAdmin.filtrer')}
+        >
+          <option value="">{t('commandesAdmin.tousStatuts')}</option>
+          {Object.keys(STATUTS).map((cle) => (
+            <option key={cle} value={cle}>{t(`statut.${cle}`)}</option>
           ))}
         </select>
       </div>
 
       {erreur && <p className="erreur">{erreur}</p>}
       {succes && <p className="succes">{succes}</p>}
-      {chargement && !erreur && <p className="muted">Chargement...</p>}
+      {chargement && !erreur && <p className="muted">{t('commun.chargement')}</p>}
 
       {!chargement && (
         <div className="card table-wrap">
           <table>
             <thead>
               <tr>
-                <th>N°</th>
-                <th>Client</th>
-                <th>Date</th>
-                <th>Total</th>
-                <th>Statut</th>
+                <th>{t('commun.numero')}</th>
+                <th>{t('commandesAdmin.client')}</th>
+                <th>{t('commun.date')}</th>
+                <th>{t('commun.total')}</th>
+                <th>{t('commun.statut')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {commandes.length === 0 && (
-                <tr><td colSpan="6" className="muted">Aucune commande.</td></tr>
+                <tr><td colSpan="6" className="muted">{t('commandesAdmin.aucune')}</td></tr>
               )}
               {commandes.map((c) => {
-                const st = STATUTS[c.statut] || { texte: c.statut, classe: '' };
+                const classe = STATUTS[c.statut]?.classe || '';
                 const annulable = c.statut === 'en_attente' || c.statut === 'confirmee';
                 const detail = details[c.id];
                 return (
@@ -116,15 +133,15 @@ export default function AdminCommandes() {
                       <td>{formaterPrix(c.total)}</td>
                       <td>
                         {c.statut === 'annulee' ? (
-                          <span className={`badge ${st.classe}`}>{st.texte}</span>
+                          <span className={`badge ${classe}`}>{t('statut.annulee')}</span>
                         ) : (
                           <select
                             value={c.statut}
-                            aria-label={`Statut de la commande ${c.id}`}
+                            aria-label={t('commandesAdmin.statutDe', { id: c.id })}
                             onChange={(e) => changerStatut(c, e.target.value)}
                           >
                             {STATUTS_CHOISISSABLES.map((cle) => (
-                              <option key={cle} value={cle}>{STATUTS[cle].texte}</option>
+                              <option key={cle} value={cle}>{t(`statut.${cle}`)}</option>
                             ))}
                           </select>
                         )}
@@ -132,10 +149,11 @@ export default function AdminCommandes() {
                       <td>
                         <div className="actions-ligne">
                           <button className="btn btn-light btn-small" onClick={() => basculerDetail(c.id)}>
-                            {ouverte === c.id ? 'Masquer' : 'Détail'}
+                            {ouverte === c.id ? t('commun.masquer') : t('commun.detail')}
                           </button>
+                          {c.statut !== 'annulee' && <BoutonFacture commandeId={c.id} />}
                           {annulable && (
-                            <button className="btn btn-light btn-small btn-danger" onClick={() => annuler(c)}>Annuler</button>
+                            <button className="btn btn-light btn-small btn-danger" onClick={() => annuler(c)}>{t('commun.annuler')}</button>
                           )}
                         </div>
                       </td>
@@ -144,11 +162,11 @@ export default function AdminCommandes() {
                       <tr className="ligne-detail">
                         <td colSpan="6">
                           {!detail ? (
-                            <span className="muted">Chargement du détail...</span>
+                            <span className="muted">{t('commun.chargementDetail')}</span>
                           ) : (
                             <table className="commande-lignes">
                               <thead>
-                                <tr><th>Produit</th><th>Quantité</th><th>Prix unitaire</th><th>Sous-total</th></tr>
+                                <tr><th>{t('commun.produit')}</th><th>{t('commun.quantite')}</th><th>{t('commun.prixUnitaire')}</th><th>{t('commun.sousTotal')}</th></tr>
                               </thead>
                               <tbody>
                                 {detail.lignes.map((l) => (
@@ -172,6 +190,8 @@ export default function AdminCommandes() {
           </table>
         </div>
       )}
+
+      <Pagination pagination={pagination} onChange={setPage} />
     </>
   );
 }

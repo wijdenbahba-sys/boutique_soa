@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useApi } from '../../useApi.js';
+import { useT } from '../../i18n.jsx';
 
 // Formulaire d'ajout (/admin/produits/nouveau) et de modification (/admin/produits/:id)
 export default function ProduitForm() {
   const { id } = useParams(); // présent seulement en modification
   const modification = Boolean(id);
   const appeler = useApi();
+  const { t } = useT();
   const navigate = useNavigate();
 
   const [categories, setCategories] = useState([]);
@@ -54,10 +56,10 @@ export default function ProduitForm() {
     const prix = Number(champs.prix);
     const stock = Number(champs.stock);
     const seuil = Number(champs.seuil_alerte);
-    if (!champs.nom.trim()) return setErreur('Le nom est obligatoire.');
-    if (champs.prix === '' || Number.isNaN(prix) || prix < 0) return setErreur('Le prix doit être un nombre supérieur ou égal à 0.');
-    if (!Number.isInteger(stock) || stock < 0) return setErreur('Le stock doit être un entier supérieur ou égal à 0.');
-    if (!Number.isInteger(seuil) || seuil < 0) return setErreur("Le seuil d'alerte doit être un entier supérieur ou égal à 0.");
+    if (!champs.nom.trim()) return setErreur(t('form.nomObligatoire'));
+    if (champs.prix === '' || Number.isNaN(prix) || prix < 0) return setErreur(t('form.prixInvalide'));
+    if (!Number.isInteger(stock) || stock < 0) return setErreur(t('form.stockInvalide'));
+    if (!Number.isInteger(seuil) || seuil < 0) return setErreur(t('form.seuilInvalide'));
 
     const corps = {
       nom: champs.nom.trim(),
@@ -77,7 +79,7 @@ export default function ProduitForm() {
         await appeler('/api/produits', { method: 'POST', body: corps });
       }
       navigate('/admin/produits', {
-        state: { succes: modification ? `Le produit "${corps.nom}" a été modifié.` : `Le produit "${corps.nom}" a été ajouté.` },
+        state: { succes: t(modification ? 'form.modifie' : 'form.ajoute', { nom: corps.nom }) },
       });
     } catch (err) {
       if (err.status !== 401) setErreur(err.message);
@@ -86,52 +88,52 @@ export default function ProduitForm() {
     }
   }
 
-  if (chargement) return <p className="muted">Chargement...</p>;
+  if (chargement) return <p className="muted">{t('commun.chargement')}</p>;
 
   return (
     <div className="card form-large">
-      <h1>{modification ? 'Modifier le produit' : 'Ajouter un produit'}</h1>
+      <h1>{modification ? t('form.titreModifier') : t('form.titreAjouter')}</h1>
       <form onSubmit={soumettre}>
         <label>
-          Nom
+          {t('commun.nom')}
           <input value={champs.nom} onChange={modifier('nom')} required />
         </label>
         <label>
-          Description
+          {t('commun.description')}
           <textarea rows="3" value={champs.description} onChange={modifier('description')} />
         </label>
         <div className="form-grille">
           <label>
-            Prix (DT)
+            {t('form.prixDt')}
             <input type="number" step="0.01" min="0" value={champs.prix} onChange={modifier('prix')} required />
           </label>
           <label>
-            Catégorie
+            {t('commun.categorie')}
             <select value={champs.category_id} onChange={modifier('category_id')}>
-              <option value="">Aucune</option>
+              <option value="">{t('form.aucune')}</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>{c.nom}</option>
               ))}
             </select>
           </label>
           <label>
-            Stock
+            {t('commun.stock')}
             <input type="number" step="1" min="0" value={champs.stock} onChange={modifier('stock')} required />
           </label>
           <label>
-            Seuil d'alerte
+            {t('form.seuilAlerte')}
             <input type="number" step="1" min="0" value={champs.seuil_alerte} onChange={modifier('seuil_alerte')} required />
           </label>
         </div>
         <label>
-          Image (URL, facultatif)
+          {t('form.image')}
           <input type="url" placeholder="https://..." value={champs.image_url} onChange={modifier('image_url')} />
         </label>
 
         {erreur && <p className="erreur">{erreur}</p>}
         <div className="actions-ligne">
-          <button className="btn" disabled={envoi}>{envoi ? 'Enregistrement...' : 'Enregistrer'}</button>
-          <Link to="/admin/produits" className="btn btn-light">Annuler</Link>
+          <button className="btn" disabled={envoi}>{envoi ? t('commun.enregistrement') : t('commun.enregistrer')}</button>
+          <Link to="/admin/produits" className="btn btn-light">{t('commun.annuler')}</Link>
         </div>
       </form>
     </div>

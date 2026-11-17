@@ -1,21 +1,23 @@
 import { useState } from 'react';
 import { useAuth } from '../AuthContext.jsx';
 import { useCart } from '../CartContext.jsx';
+import { useT } from '../i18n.jsx';
 import { formaterPrix } from '../utils.js';
 
-function etatStock(produit) {
-  if (produit.stock <= 0) return { texte: 'Rupture de stock', classe: 'badge-rupture' };
-  if (produit.stock <= produit.seuil_alerte) return { texte: `Plus que ${produit.stock} en stock`, classe: 'badge-faible' };
-  return { texte: 'En stock', classe: 'badge-ok' };
+function etatStock(produit, t) {
+  if (produit.stock <= 0) return { texte: t('stock.rupture'), classe: 'badge-rupture' };
+  if (produit.stock <= produit.seuil_alerte) return { texte: t('stock.faible', { n: produit.stock }), classe: 'badge-faible' };
+  return { texte: t('stock.enStock'), classe: 'badge-ok' };
 }
 
 // Affiche un produit (une "carte" du catalogue)
 export default function ProduitCard({ produit }) {
   const { user } = useAuth();
   const { items, ajouter } = useCart();
+  const { t } = useT();
   const [ajoute, setAjoute] = useState(false);
 
-  const stock = etatStock(produit);
+  const stock = etatStock(produit, t);
   const dansLePanier = items.find((i) => i.produit_id === produit.id)?.quantite || 0;
   const rupture = produit.stock <= 0;
   const stockAtteint = dansLePanier >= produit.stock; // tout le stock est déjà dans le panier
@@ -26,10 +28,10 @@ export default function ProduitCard({ produit }) {
     setTimeout(() => setAjoute(false), 1200); // le message "Ajouté" disparaît après 1,2 s
   }
 
-  let texteBouton = 'Ajouter au panier';
-  if (rupture) texteBouton = 'Indisponible';
-  else if (stockAtteint) texteBouton = 'Stock maximum atteint';
-  else if (ajoute) texteBouton = 'Ajouté ✓';
+  let texteBouton = t('produit.ajouter');
+  if (rupture) texteBouton = t('produit.indisponible');
+  else if (stockAtteint) texteBouton = t('produit.stockMax');
+  else if (ajoute) texteBouton = t('produit.ajoute');
 
   return (
     <article className="card produit">
@@ -41,7 +43,7 @@ export default function ProduitCard({ produit }) {
         )}
       </div>
       <div className="produit-corps">
-        <span className="produit-categorie">{produit.categorie_nom || 'Sans catégorie'}</span>
+        <span className="produit-categorie">{produit.categorie_nom || t('produit.sansCategorie')}</span>
         <h3>{produit.nom}</h3>
         {produit.description && <p className="muted">{produit.description}</p>}
         <div className="produit-pied">

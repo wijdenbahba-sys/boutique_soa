@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext.jsx';
+import { useT } from '../i18n.jsx';
 
 export default function Register() {
   const { register } = useAuth();
+  const { t } = useT();
   const navigate = useNavigate();
   const location = useLocation();
   const retour = location.state?.from || '/'; // page où retourner après l'inscription
@@ -20,7 +22,7 @@ export default function Register() {
 
     // Même règle que le backend : 6 caractères minimum
     if (motDePasse.length < 6) {
-      setErreur('Le mot de passe doit contenir au moins 6 caractères.');
+      setErreur(t('register.motDePasseCourt'));
       return;
     }
 
@@ -37,27 +39,27 @@ export default function Register() {
 
   return (
     <div className="card form-card">
-      <h1>Créer un compte</h1>
+      <h1>{t('register.titre')}</h1>
       <form onSubmit={soumettre}>
         <label>
-          Nom
+          {t('commun.nom')}
           <input value={nom} onChange={(e) => setNom(e.target.value)} required />
         </label>
         <label>
-          Email
+          {t('commun.email')}
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </label>
         <label>
-          Mot de passe (6 caractères minimum)
+          {t('register.motDePasse')}
           <input type="password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} required />
         </label>
         {erreur && <p className="erreur">{erreur}</p>}
         <button className="btn btn-block" disabled={chargement}>
-          {chargement ? 'Création...' : "S'inscrire"}
+          {chargement ? t('register.enCours') : t('register.bouton')}
         </button>
       </form>
       <p className="muted center">
-        Déjà un compte ? <Link to="/login" state={{ from: retour }}>Se connecter</Link>
+        {t('register.dejaCompte')} <Link to="/login" state={{ from: retour }}>{t('register.seConnecter')}</Link>
       </p>
     </div>
   );

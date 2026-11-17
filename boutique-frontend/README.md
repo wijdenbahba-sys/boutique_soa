@@ -2,7 +2,7 @@
 
 Frontend du mini-projet SOA. Il utilise l'API `boutique-api` (Node.js + Express + MySQL).
 
-**Stack** : React 18 · Vite · React Router
+**Stack** : React 18 · Vite · React Router · Recharts
 
 ## Prérequis
 - Node.js installé
@@ -34,8 +34,16 @@ Si l'API n'est pas sur `http://localhost:3000`, copier `.env.example` en `.env` 
 - **Tableau de bord** : chiffres clés, commandes par statut, produits les plus vendus, alertes de stock
 - **Produits** : liste, ajout, modification, ajustement rapide du stock, suppression (refusée si le produit est déjà dans une commande)
 - **Commandes** : toutes les commandes, détail des lignes, changement de statut, annulation (stock remis à jour)
-- **Catégories** : ajout, modification, suppression (refusée si des produits l'utilisent)
+- **Catégories** : ajout, modification, suppression (confirmation avec le nombre de produits touchés ; ils sont conservés en « Sans catégorie »)
 - Accès protégé : un client qui tape `/admin` est renvoyé ; une session expirée (401) renvoie vers la connexion
+
+### Nouveautés v2
+- **Bilingue Français / العربية** : bouton de langue dans la barre de navigation, direction RTL automatique, choix mémorisé (`src/i18n.jsx`, `src/locales.js`)
+- **Graphiques** (Recharts) : ventes par jour (7/30/90 jours, CA ou commandes, vue tableau) et CA par catégorie
+- **Pagination, tri et recherche** côté serveur (catalogue, produits, commandes)
+- **Historique des mouvements de stock**, **fournisseurs**, **achats / réapprovisionnement** (suggestions, réception)
+- **Facture PDF** pour chaque commande
+- Docker : `docker compose up --build` depuis la racine du dépôt (frontend sur le port 8080)
 
 ## Structure
 

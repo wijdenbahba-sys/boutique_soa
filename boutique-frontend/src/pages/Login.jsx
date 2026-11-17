@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext.jsx';
+import { useT } from '../i18n.jsx';
 
 export default function Login() {
   const { login } = useAuth();
+  const { t } = useT();
   const navigate = useNavigate();
   const location = useLocation();
   // Si on vient de la page Panier, on y retourne après la connexion
@@ -32,25 +34,25 @@ export default function Login() {
 
   return (
     <div className="card form-card">
-      <h1>Connexion</h1>
+      <h1>{t('login.titre')}</h1>
       {info && <p className="info">{info}</p>}
       <form onSubmit={soumettre}>
         <label>
-          Email
+          {t('commun.email')}
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </label>
         <label>
-          Mot de passe
+          {t('commun.motDePasse')}
           <input type="password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} required />
         </label>
         {erreur && <p className="erreur">{erreur}</p>}
         <button className="btn btn-block" disabled={chargement}>
-          {chargement ? 'Connexion...' : 'Se connecter'}
+          {chargement ? t('login.enCours') : t('login.bouton')}
         </button>
       </form>
       <p className="muted center">
-        Pas encore de compte ?{' '}
-        <Link to="/register" state={{ from: retour }}>Créer un compte</Link>
+        {t('login.pasDeCompte')}{' '}
+        <Link to="/register" state={{ from: retour }}>{t('login.creer')}</Link>
       </p>
     </div>
   );

@@ -11,9 +11,15 @@ import AdminProduits from './pages/admin/AdminProduits.jsx';
 import ProduitForm from './pages/admin/ProduitForm.jsx';
 import AdminCommandes from './pages/admin/AdminCommandes.jsx';
 import AdminCategories from './pages/admin/AdminCategories.jsx';
+import AdminMouvements from './pages/admin/AdminMouvements.jsx';
+import AdminFournisseurs from './pages/admin/AdminFournisseurs.jsx';
+import AdminAchats from './pages/admin/AdminAchats.jsx';
+import AchatForm from './pages/admin/AchatForm.jsx';
+import { useT } from './i18n.jsx';
 
 // Chaque <Route> associe une URL à une page
 export default function App() {
+  const { t } = useT();
   return (
     <>
       <Navbar />
@@ -33,14 +39,18 @@ export default function App() {
             <Route path="produits/:id" element={<ProduitForm />} />
             <Route path="commandes" element={<AdminCommandes />} />
             <Route path="categories" element={<AdminCategories />} />
+            <Route path="mouvements" element={<AdminMouvements />} />
+            <Route path="fournisseurs" element={<AdminFournisseurs />} />
+            <Route path="achats" element={<AdminAchats />} />
+            <Route path="achats/nouveau" element={<AchatForm />} />
           </Route>
 
           <Route
             path="*"
             element={
               <div className="card center">
-                <h1>Page introuvable</h1>
-                <p><Link to="/">Retour au catalogue</Link></p>
+                <h1>{t('introuvable.titre')}</h1>
+                <p><Link to="/">{t('introuvable.retour')}</Link></p>
               </div>
             }
           />
