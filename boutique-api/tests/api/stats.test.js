@@ -35,6 +35,7 @@ describe('Statistiques', () => {
     expect(s.produits_en_alerte).toBe(1); // Lampe : stock 2 <= seuil 3
     expect(s.valeur_stock).toBe(8 * 45 + 2 * 35 + 5 * 10); // stock actuel x prix
     expect(s.achats_en_cours).toBe(0);
+    expect(s.nb_clients).toBe(1);
     expect(s.commandes_par_statut).toEqual(expect.arrayContaining([{ statut: 'en_attente', nombre: 1 }, { statut: 'annulee', nombre: 1 }]));
     expect(s.top_produits[0]).toMatchObject({ nom: 'Clavier', quantite_vendue: 2 });
   });

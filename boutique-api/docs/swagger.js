@@ -27,16 +27,17 @@ const spec = {
   openapi: '3.0.3',
   info: {
     title: 'Boutique API — Gestion d\'inventaire',
-    version: '2.0.0',
+    version: '4.0.0',
     description:
       "API REST de gestion d'inventaire de produits pour une boutique en ligne (mini-projet atelier SOA).\n\n" +
       '**Comment tester les routes protégées :**\n' +
       '1. Appeler `POST /api/auth/login` et copier le `token` de la réponse.\n' +
       '2. Cliquer sur le bouton **Authorize** (en haut à droite) et coller le token.\n' +
       '3. Les cadenas se ferment : toutes les routes protégées sont maintenant utilisables.\n\n' +
-      '**Rôles :** `client` (passe des commandes) et `admin` (gère produits, stock, commandes, fournisseurs et achats).\n\n' +
+      '**Rôles :** `client` (commandes, favoris, avis) et `admin` (produits, stock, commandes, fournisseurs, achats, codes promo, exports).\n\n' +
       '**Sécurité :** JWT, mots de passe hachés (bcrypt), validation des entrées, en-têtes helmet, limitation de débit ' +
       '(réponse `429` après trop de requêtes ou de tentatives de connexion).\n\n' +
+      '**v4 :** événements temps réel (SSE), webhooks signés HMAC, clés API partenaires (`X-API-Key`), journal d\'audit, paiement par carte simulé, emails transactionnels.\n\n' +
       '**Pagination :** les listes acceptent `?page=1&limit=10` (réponse `{ data, pagination }`) et un tri `?tri=...&ordre=asc|desc`.',
   },
   servers: [{ url: '/', description: 'Serveur courant' }],
@@ -49,11 +50,22 @@ const spec = {
     { name: 'Mouvements de stock', description: 'Historique de tous les changements de stock (traçabilité)' },
     { name: 'Fournisseurs', description: 'Gestion des fournisseurs' },
     { name: 'Achats', description: 'Réapprovisionnement : bons de commande fournisseur, réception = stock +' },
+    { name: 'Favoris', description: 'Liste de souhaits du client' },
+    { name: 'Avis', description: 'Notes et commentaires sur les produits (réservés aux acheteurs)' },
+    { name: 'Codes promo', description: 'Réductions applicables aux commandes' },
+    { name: 'Temps réel', description: 'Événements du domaine : historique et flux Server-Sent Events (admin)' },
+    { name: 'Clés API', description: 'Gestion des clés des partenaires (admin)' },
+    { name: 'Partenaire', description: 'API publique en lecture seule, authentifiée par clé `X-API-Key`' },
+    { name: 'Webhooks', description: 'Notifications HTTP signées (HMAC-SHA256) envoyées à des systèmes externes (admin)' },
+    { name: "Journal d'audit", description: 'Trace de toutes les actions sensibles (admin)' },
+    { name: 'Emails', description: "Boîte d'envoi des emails transactionnels (mode simulation si SMTP non configuré)" },
+    { name: 'Export / Import', description: 'Export CSV (Excel) et import en masse de produits' },
   ],
 
   components: {
     securitySchemes: {
       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+      apiKeyAuth: { type: 'apiKey', in: 'header', name: 'X-API-Key', description: 'Clé créée dans Intégrations (admin)' },
     },
     schemas: {
       Message: {
@@ -94,9 +106,11 @@ const spec = {
           prix: { type: 'number', example: 45 },
           stock: { type: 'integer', example: 30 },
           seuil_alerte: { type: 'integer', example: 5 },
-          image_url: { type: 'string', nullable: true },
+          image_url: { type: 'string', nullable: true, description: 'Chemin public de l\'image, ex : /uploads/ab12.png', example: '/uploads/3f9a1c0d.png' },
           category_id: { type: 'integer', nullable: true, example: 1 },
           categorie_nom: { type: 'string', nullable: true, example: 'Informatique' },
+          note_moyenne: { type: 'number', nullable: true, description: 'Moyenne des avis (1 décimale), null sans avis', example: 4.5 },
+          nb_avis: { type: 'integer', example: 3 },
         },
       },
       ProduitInput: {
@@ -122,7 +136,17 @@ const spec = {
             enum: ['en_attente', 'confirmee', 'expediee', 'livree', 'annulee'],
             example: 'en_attente',
           },
-          total: { type: 'number', example: 115.5 },
+          total: { type: 'number', description: 'Total final, après remise', example: 115.5 },
+          code_promo: { type: 'string', nullable: true, example: 'BIENVENUE10' },
+          remise: { type: 'number', example: 0 },
+          adresse_livraison: { type: 'string', nullable: true, example: '12 rue de la Plage' },
+          ville: { type: 'string', nullable: true, example: 'Mahdia' },
+          telephone: { type: 'string', nullable: true, example: '22 333 444' },
+          mode_paiement: { type: 'string', enum: ['livraison', 'carte'], example: 'carte' },
+          statut_paiement: { type: 'string', enum: ['en_attente', 'paye', 'echoue', 'rembourse'], example: 'paye' },
+          paiement_marque: { type: 'string', nullable: true, example: 'Visa' },
+          paiement_last4: { type: 'string', nullable: true, example: '4242' },
+          paiement_reference: { type: 'string', nullable: true, example: 'PAY-AB12CD34EF' },
           date_commande: { type: 'string', format: 'date-time' },
         },
       },
@@ -228,6 +252,28 @@ const spec = {
           },
         },
       },
+      Evenement: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          type: { type: 'string', enum: ['commande.creee', 'commande.statut', 'commande.annulee', 'stock.bas', 'achat.recu', 'avis.cree'] },
+          date: { type: 'string', format: 'date-time' },
+          donnees: { type: 'object' },
+        },
+      },
+      CleApi: {
+        type: 'object',
+        properties: { id: { type: 'integer' }, nom: { type: 'string' }, prefixe: { type: 'string', example: 'bk_live_0123456' }, actif: { type: 'boolean' }, nb_appels: { type: 'integer' }, derniere_utilisation: { type: 'string', format: 'date-time', nullable: true }, created_at: { type: 'string', format: 'date-time' } },
+      },
+      Webhook: {
+        type: 'object',
+        properties: { id: { type: 'integer' }, url: { type: 'string', example: 'https://exemple.tn/hook' }, evenements: { type: 'array', items: { type: 'string' } }, actif: { type: 'boolean' }, nb_envois: { type: 'integer' }, dernier_succes: { type: 'boolean', nullable: true } },
+      },
+      WebhookInput: {
+        type: 'object',
+        required: ['url', 'evenements'],
+        properties: { url: { type: 'string', example: 'https://exemple.tn/hook' }, evenements: { type: 'array', items: { type: 'string' }, example: ['commande.creee', 'stock.bas'], description: "Types d'événements, ou [\"*\"] pour tous" }, actif: { type: 'boolean', default: true } },
+      },
       CommandeInput: {
         type: 'object',
         required: ['produits'],
@@ -243,6 +289,68 @@ const spec = {
               },
             },
           },
+          code_promo: { type: 'string', description: 'Facultatif, insensible à la casse. La remise est recalculée par le serveur.', example: 'BIENVENUE10' },
+          adresse_livraison: { type: 'string', example: '12 rue de la Plage' },
+          ville: { type: 'string', example: 'Mahdia' },
+          telephone: { type: 'string', example: '22 333 444' },
+          mode_paiement: { type: 'string', enum: ['livraison', 'carte'], default: 'livraison' },
+          carte: {
+            type: 'object',
+            description: 'Obligatoire si mode_paiement = carte. Jamais stockée (seuls la marque et les 4 derniers chiffres le sont). Cartes de test : 4242424242424242 (Visa, OK), 5555555555554444 (Mastercard, OK), 4000000000000002 (refusée), 4000000000009995 (fonds insuffisants).',
+            properties: {
+              numero: { type: 'string', example: '4242 4242 4242 4242' },
+              expiration: { type: 'string', example: '12/30' },
+              cvc: { type: 'string', example: '123' },
+              titulaire: { type: 'string', example: 'Wejden Bahba' },
+            },
+          },
+        },
+      },
+      CodePromo: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer', example: 1 },
+          code: { type: 'string', example: 'BIENVENUE10' },
+          type: { type: 'string', enum: ['pourcentage', 'montant'], example: 'pourcentage' },
+          valeur: { type: 'number', description: '% ou montant en DT selon le type', example: 10 },
+          min_commande: { type: 'number', example: 0 },
+          date_expiration: { type: 'string', format: 'date', nullable: true, example: '2026-12-31' },
+          utilisations_max: { type: 'integer', nullable: true, example: 100 },
+          utilisations: { type: 'integer', example: 3 },
+          actif: { type: 'boolean', example: true },
+          expire: { type: 'boolean', example: false },
+        },
+      },
+      CodePromoInput: {
+        type: 'object',
+        required: ['code', 'type', 'valeur'],
+        properties: {
+          code: { type: 'string', description: 'Lettres, chiffres, - et _ (mis en majuscules)', example: 'ETE20' },
+          type: { type: 'string', enum: ['pourcentage', 'montant'], example: 'pourcentage' },
+          valeur: { type: 'number', example: 20 },
+          min_commande: { type: 'number', example: 50 },
+          date_expiration: { type: 'string', format: 'date', example: '2026-12-31' },
+          utilisations_max: { type: 'integer', example: 100 },
+          actif: { type: 'boolean', example: true },
+        },
+      },
+      Avis: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer', example: 1 },
+          note: { type: 'integer', minimum: 1, maximum: 5, example: 5 },
+          commentaire: { type: 'string', nullable: true, example: 'Très bon produit' },
+          created_at: { type: 'string', format: 'date-time' },
+          auteur: { type: 'string', example: 'Sarra' },
+          user_id: { type: 'integer', example: 2 },
+        },
+      },
+      AvisInput: {
+        type: 'object',
+        required: ['note'],
+        properties: {
+          note: { type: 'integer', minimum: 1, maximum: 5, example: 4 },
+          commentaire: { type: 'string', example: 'Livraison rapide, produit conforme.' },
         },
       },
     },
@@ -319,6 +427,58 @@ const spec = {
         responses: {
           200: reponse('Utilisateur connecté', { $ref: '#/components/schemas/User' }),
           401: erreur('Token manquant'),
+        },
+      },
+    },
+
+    '/api/auth/profil': {
+      put: {
+        tags: ['Authentification'],
+        summary: 'Modifier son nom et son email',
+        security: securite,
+        requestBody: {
+          required: true,
+          content: json(
+            {
+              type: 'object',
+              required: ['nom', 'email'],
+              properties: { nom: { type: 'string' }, email: { type: 'string' } },
+            },
+            { nom: 'Sarra B.', email: 'sarra@test.tn' }
+          ),
+        },
+        responses: {
+          200: reponse('Profil mis à jour', {
+            type: 'object',
+            properties: { message: { type: 'string' }, user: { $ref: '#/components/schemas/User' } },
+          }),
+          400: erreur('Données invalides'),
+          401: erreur('Token manquant'),
+          409: erreur('Cet email est déjà utilisé'),
+        },
+      },
+    },
+    '/api/auth/mot-de-passe': {
+      put: {
+        tags: ['Authentification'],
+        summary: 'Changer son mot de passe',
+        security: securite,
+        requestBody: {
+          required: true,
+          content: json(
+            {
+              type: 'object',
+              required: ['ancien', 'nouveau'],
+              properties: { ancien: { type: 'string' }, nouveau: { type: 'string', minLength: 6 } },
+            },
+            { ancien: 'ancienMotDePasse', nouveau: 'nouveauMotDePasse' }
+          ),
+        },
+        responses: {
+          200: reponse('Mot de passe modifié', { $ref: '#/components/schemas/Message' }),
+          400: erreur('Ancien mot de passe incorrect ou nouveau trop court'),
+          401: erreur('Token manquant'),
+          429: erreur('Trop de tentatives'),
         },
       },
     },
@@ -404,7 +564,10 @@ const spec = {
           { name: 'categorie', in: 'query', description: 'Filtrer par id de catégorie', schema: { type: 'integer' } },
           { name: 'search', in: 'query', description: 'Recherche dans le nom et la description', schema: { type: 'string' } },
           { name: 'alerte', in: 'query', description: 'true : seulement les produits dont le stock est sous le seuil', schema: { type: 'boolean' } },
-          { name: 'tri', in: 'query', description: 'Colonne de tri', schema: { type: 'string', enum: ['nom', 'prix', 'stock', 'date'] } },
+          { name: 'prix_min', in: 'query', description: 'Prix minimum (inclus)', schema: { type: 'number', example: 10 } },
+          { name: 'prix_max', in: 'query', description: 'Prix maximum (inclus)', schema: { type: 'number', example: 100 } },
+          { name: 'en_stock', in: 'query', description: '1 ou true : masque les produits en rupture', schema: { type: 'boolean' } },
+          { name: 'tri', in: 'query', description: 'Colonne de tri', schema: { type: 'string', enum: ['nom', 'prix', 'stock', 'date', 'note'] } },
           { name: 'ordre', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
           { name: 'page', in: 'query', description: 'Active la pagination', schema: { type: 'integer', example: 1 } },
           { name: 'limit', in: 'query', description: '10 par défaut, 100 maximum', schema: { type: 'integer', example: 10 } },
@@ -549,13 +712,20 @@ const spec = {
         summary: 'Passer une commande (client)',
         description:
           'Vérifie le stock, calcule le total et décrémente le stock dans une **transaction MySQL** : ' +
-          "si un produit manque de stock, rien n'est enregistré.",
+          "si un produit manque de stock ou si le code promo est refusé, rien n'est enregistré. " +
+          "Le code promo (facultatif) est revalidé et la remise recalculée par le serveur ; annuler la commande libère le code.",
         security: securite,
         requestBody: {
           required: true,
           content: json(
             { $ref: '#/components/schemas/CommandeInput' },
-            { produits: [{ produit_id: 1, quantite: 2 }, { produit_id: 2, quantite: 1 }] }
+            {
+              produits: [{ produit_id: 1, quantite: 2 }, { produit_id: 2, quantite: 1 }],
+              code_promo: 'BIENVENUE10',
+              adresse_livraison: '12 rue de la Plage',
+              ville: 'Mahdia',
+              telephone: '22 333 444',
+            }
           ),
         },
         responses: {
@@ -564,12 +734,19 @@ const spec = {
             properties: {
               id: { type: 'integer' },
               statut: { type: 'string', example: 'en_attente' },
+              sous_total: { type: 'number', example: 128.33 },
+              remise: { type: 'number', example: 12.83 },
+              code_promo: { type: 'string', nullable: true, example: 'BIENVENUE10' },
               total: { type: 'number', example: 115.5 },
+              mode_paiement: { type: 'string', example: 'carte' },
+              statut_paiement: { type: 'string', example: 'paye' },
+              paiement: { type: 'object', nullable: true, properties: { marque: { type: 'string' }, last4: { type: 'string' }, reference: { type: 'string' } } },
               message: { type: 'string' },
             },
           }),
-          400: erreur('Panier vide ou stock insuffisant'),
+          400: erreur('Panier vide, stock insuffisant, code promo refusé ou données invalides'),
           401: erreur('Token manquant'),
+          402: erreur('Paiement refusé : aucune commande créée, stock intact'),
           403: erreur('Réservé aux clients'),
           404: erreur('Produit introuvable'),
         },
@@ -707,6 +884,7 @@ const spec = {
               total_produits: { type: 'integer' },
               valeur_stock: { type: 'number', description: 'Somme prix x stock' },
               achats_en_cours: { type: 'integer', description: 'Achats fournisseurs pas encore reçus' },
+              nb_clients: { type: 'integer', description: 'Nombre de comptes clients' },
               produits_en_alerte: { type: 'integer' },
               total_commandes: { type: 'integer' },
               chiffre_affaires: { type: 'number' },
@@ -1046,6 +1224,497 @@ const spec = {
         },
       },
     },
+
+    // =====================  PRODUITS : IMAGE, IMPORT, AVIS  =====================
+    '/api/produits/{id}/image': {
+      post: {
+        tags: ['Produits'],
+        summary: "Envoyer l'image d'un produit (admin)",
+        description:
+          'Envoi `multipart/form-data` avec un champ fichier `image` : JPEG, PNG ou WebP, 2 Mo maximum. ' +
+          "Le type est vérifié sur le contenu réel du fichier. L'ancienne image est supprimée. " +
+          'Le fichier est ensuite servi sur `/uploads/<nom>`.',
+        security: securite,
+        parameters: [idParam()],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['image'],
+                properties: { image: { type: 'string', format: 'binary' } },
+              },
+            },
+          },
+        },
+        responses: {
+          200: reponse('Image enregistrée', {
+            type: 'object',
+            properties: {
+              id: { type: 'integer' },
+              image_url: { type: 'string', example: '/uploads/3f9a1c0d5b7e4a2c8d1e0f6a9b3c7d52.png' },
+              message: { type: 'string' },
+            },
+          }),
+          400: erreur('Aucun fichier ou format non supporté'),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+          404: erreur('Produit introuvable'),
+          413: erreur('Image trop volumineuse (2 Mo maximum)'),
+        },
+      },
+      delete: {
+        tags: ['Produits'],
+        summary: "Supprimer l'image d'un produit (admin)",
+        security: securite,
+        parameters: [idParam()],
+        responses: {
+          200: reponse('Image supprimée', { $ref: '#/components/schemas/Message' }),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+          404: erreur('Produit introuvable'),
+        },
+      },
+    },
+    '/api/produits/import': {
+      post: {
+        tags: ['Export / Import'],
+        summary: 'Importer des produits en masse (admin)',
+        description:
+          "Jusqu'à 500 lignes. Les catégories sont retrouvées par leur nom (créées si besoin). " +
+          'Les lignes invalides ou en doublon (nom déjà existant) sont ignorées et listées dans `erreurs` ; les autres sont importées.',
+        security: securite,
+        requestBody: {
+          required: true,
+          content: json(
+            {
+              type: 'object',
+              required: ['produits'],
+              properties: {
+                produits: {
+                  type: 'array',
+                  maxItems: 500,
+                  items: {
+                    type: 'object',
+                    required: ['nom', 'prix'],
+                    properties: {
+                      nom: { type: 'string' },
+                      description: { type: 'string' },
+                      prix: { type: 'number' },
+                      stock: { type: 'integer' },
+                      seuil_alerte: { type: 'integer' },
+                      categorie: { type: 'string' },
+                    },
+                  },
+                },
+              },
+            },
+            { produits: [{ nom: 'Écran 24 pouces', prix: 199.9, stock: 8, seuil_alerte: 2, categorie: 'Informatique' }] }
+          ),
+        },
+        responses: {
+          200: reponse(
+            'Rapport d\'import',
+            {
+              type: 'object',
+              properties: {
+                importes: { type: 'integer', example: 7 },
+                ignores: { type: 'integer', example: 1 },
+                erreurs: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: { ligne: { type: 'integer', example: 3 }, message: { type: 'string' } },
+                  },
+                },
+              },
+            },
+            { importes: 7, ignores: 1, erreurs: [{ ligne: 3, message: 'Le produit "Clavier" existe déjà' }] }
+          ),
+          400: erreur('Tableau absent, vide ou de plus de 500 lignes'),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+        },
+      },
+    },
+    '/api/produits/{id}/avis': {
+      get: {
+        tags: ['Avis'],
+        summary: "Avis d'un produit (public)",
+        parameters: [idParam()],
+        responses: {
+          200: reponse('Moyenne, répartition par note et liste des avis', {
+            type: 'object',
+            properties: {
+              moyenne: { type: 'number', nullable: true, example: 4.3 },
+              total: { type: 'integer', example: 3 },
+              repartition: {
+                type: 'object',
+                description: 'Nombre d\'avis pour chaque note (clés "1" à "5")',
+                example: { 1: 0, 2: 0, 3: 1, 4: 0, 5: 2 },
+              },
+              avis: { type: 'array', items: { $ref: '#/components/schemas/Avis' } },
+            },
+          }),
+          404: erreur('Produit introuvable'),
+        },
+      },
+      post: {
+        tags: ['Avis'],
+        summary: 'Donner ou modifier son avis (client ayant acheté le produit)',
+        description:
+          "Réservé aux clients qui ont une commande non annulée contenant ce produit (sinon 403 « Achat requis »). " +
+          'Un second envoi remplace le premier avis (un seul avis par client et par produit).',
+        security: securite,
+        parameters: [idParam()],
+        requestBody: { required: true, content: json({ $ref: '#/components/schemas/AvisInput' }) },
+        responses: {
+          200: reponse('Avis modifié', { $ref: '#/components/schemas/Message' }),
+          201: reponse('Avis enregistré', { $ref: '#/components/schemas/Message' }),
+          400: erreur('Note invalide (entier de 1 à 5)'),
+          401: erreur('Token manquant'),
+          403: erreur('Achat requis, ou réservé aux clients'),
+          404: erreur('Produit introuvable'),
+        },
+      },
+    },
+    '/api/avis/{id}': {
+      delete: {
+        tags: ['Avis'],
+        summary: 'Supprimer un avis (auteur ou admin)',
+        security: securite,
+        parameters: [idParam()],
+        responses: {
+          200: reponse('Avis supprimé', { $ref: '#/components/schemas/Message' }),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+          404: erreur('Avis introuvable'),
+        },
+      },
+    },
+
+    // =====================  FAVORIS  =====================
+    '/api/favoris': {
+      get: {
+        tags: ['Favoris'],
+        summary: 'Mes produits favoris (client)',
+        security: securite,
+        responses: {
+          200: reponse('Produits favoris', { type: 'array', items: { $ref: '#/components/schemas/Produit' } }),
+          401: erreur('Token manquant'),
+          403: erreur('Réservé aux clients'),
+        },
+      },
+    },
+    '/api/favoris/ids': {
+      get: {
+        tags: ['Favoris'],
+        summary: 'Identifiants de mes favoris (client)',
+        description: 'Léger : sert à afficher les cœurs du catalogue.',
+        security: securite,
+        responses: {
+          200: reponse('Liste d\'identifiants', { type: 'array', items: { type: 'integer' }, example: [1, 4, 7] }),
+          401: erreur('Token manquant'),
+          403: erreur('Réservé aux clients'),
+        },
+      },
+    },
+    '/api/favoris/{produitId}': {
+      post: {
+        tags: ['Favoris'],
+        summary: 'Ajouter un produit aux favoris (client)',
+        description: '201 si ajouté, 200 s\'il y était déjà (opération idempotente).',
+        security: securite,
+        parameters: [idParam('produitId', 'Identifiant du produit')],
+        responses: {
+          200: reponse('Déjà dans les favoris', { $ref: '#/components/schemas/Message' }),
+          201: reponse('Ajouté aux favoris', { $ref: '#/components/schemas/Message' }),
+          401: erreur('Token manquant'),
+          403: erreur('Réservé aux clients'),
+          404: erreur('Produit introuvable'),
+        },
+      },
+      delete: {
+        tags: ['Favoris'],
+        summary: 'Retirer un produit des favoris (client)',
+        security: securite,
+        parameters: [idParam('produitId', 'Identifiant du produit')],
+        responses: {
+          200: reponse('Retiré des favoris', { $ref: '#/components/schemas/Message' }),
+          401: erreur('Token manquant'),
+          403: erreur('Réservé aux clients'),
+          404: erreur("Ce produit n'est pas dans vos favoris"),
+        },
+      },
+    },
+
+    // =====================  v4 : TEMPS RÉEL, CLÉS API, WEBHOOKS, AUDIT, EMAILS  =====================
+    '/api/evenements': {
+      get: {
+        tags: ['Temps réel'], summary: 'Les 50 derniers événements (admin)', security: securite,
+        responses: { 200: reponse('Événements, du plus récent au plus ancien', { type: 'array', items: { $ref: '#/components/schemas/Evenement' } }), 401: erreur('Token manquant'), 403: erreur('Accès refusé') },
+      },
+    },
+    '/api/evenements/flux': {
+      get: {
+        tags: ['Temps réel'], summary: 'Flux temps réel (Server-Sent Events, admin)', security: securite,
+        description: "Connexion HTTP gardée ouverte (`text/event-stream`). Chaque événement est poussé dès qu'il se produit : commande.creee, commande.statut, commande.annulee, stock.bas, achat.recu, avis.cree.",
+        responses: { 200: { description: 'Flux SSE', content: { 'text/event-stream': { schema: { type: 'string' } } } }, 401: erreur('Token manquant'), 403: erreur('Accès refusé') },
+      },
+    },
+    '/api/cles-api': {
+      get: {
+        tags: ['Clés API'], summary: 'Liste des clés (admin) — jamais la clé complète', security: securite,
+        responses: { 200: reponse('Clés', { type: 'array', items: { $ref: '#/components/schemas/CleApi' } }), 401: erreur('Token manquant'), 403: erreur('Accès refusé') },
+      },
+      post: {
+        tags: ['Clés API'], summary: 'Créer une clé (admin) — affichée une seule fois', security: securite,
+        requestBody: { required: true, content: json({ type: 'object', required: ['nom'], properties: { nom: { type: 'string', example: 'Site partenaire' } } }) },
+        responses: {
+          201: reponse('Clé créée', { type: 'object', properties: { id: { type: 'integer' }, nom: { type: 'string' }, prefixe: { type: 'string' }, cle: { type: 'string', example: 'bk_live_0123456789abcdef0123456789abcdef' }, message: { type: 'string' } } }),
+          400: erreur('Données invalides'), 401: erreur('Token manquant'), 403: erreur('Accès refusé'),
+        },
+      },
+    },
+    '/api/cles-api/{id}': {
+      put: {
+        tags: ['Clés API'], summary: 'Activer / désactiver une clé (admin)', security: securite, parameters: [idParam()],
+        requestBody: { required: true, content: json({ type: 'object', required: ['actif'], properties: { actif: { type: 'boolean' } } }) },
+        responses: { 200: reponse('Clé mise à jour', { type: 'object', properties: { id: { type: 'integer' }, actif: { type: 'boolean' } } }), 400: erreur('Données invalides'), 401: erreur('Token manquant'), 403: erreur('Accès refusé'), 404: erreur('Clé introuvable') },
+      },
+      delete: {
+        tags: ['Clés API'], summary: 'Supprimer une clé (admin)', security: securite, parameters: [idParam()],
+        responses: { 200: reponse('Clé supprimée', { $ref: '#/components/schemas/Message' }), 401: erreur('Token manquant'), 403: erreur('Accès refusé'), 404: erreur('Clé introuvable') },
+      },
+    },
+    '/api/partenaire/produits': {
+      get: {
+        tags: ['Partenaire'], summary: 'Catalogue (lecture seule) — clé API', security: [{ apiKeyAuth: [] }],
+        parameters: [
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'categorie', in: 'query', schema: { type: 'integer' } },
+          { name: 'page', in: 'query', schema: { type: 'integer' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer' } },
+        ],
+        responses: { 200: reponse('Produits paginés { data, pagination }'), 401: erreur('Clé API manquante, invalide ou désactivée'), 429: erreur('60 requêtes par minute dépassées') },
+      },
+    },
+    '/api/partenaire/produits/{id}': {
+      get: {
+        tags: ['Partenaire'], summary: 'Un produit — clé API', security: [{ apiKeyAuth: [] }], parameters: [idParam()],
+        responses: { 200: reponse('Produit'), 401: erreur('Clé API manquante, invalide ou désactivée'), 404: erreur('Produit introuvable'), 429: erreur('Limite atteinte') },
+      },
+    },
+    '/api/partenaire/stock': {
+      get: {
+        tags: ['Partenaire'], summary: 'Niveaux de stock — clé API', security: [{ apiKeyAuth: [] }],
+        responses: { 200: reponse('[{ id, nom, stock }]'), 401: erreur('Clé API manquante, invalide ou désactivée'), 429: erreur('Limite atteinte') },
+      },
+    },
+    '/api/webhooks': {
+      get: {
+        tags: ['Webhooks'], summary: 'Liste des webhooks (admin) — sans le secret', security: securite,
+        responses: { 200: reponse('Webhooks', { type: 'array', items: { $ref: '#/components/schemas/Webhook' } }), 401: erreur('Token manquant'), 403: erreur('Accès refusé') },
+      },
+      post: {
+        tags: ['Webhooks'], summary: 'Créer un webhook (admin)', security: securite,
+        description: "Chaque envoi est un POST JSON signé : en-tête `X-Boutique-Signature` = HMAC-SHA256(corps, secret) en hexadécimal. 3 tentatives en cas d'échec réseau ou 5xx. Les adresses privées/locales sont refusées (protection SSRF).",
+        requestBody: { required: true, content: json({ $ref: '#/components/schemas/WebhookInput' }) },
+        responses: { 201: reponse("Webhook créé (le secret n'est renvoyé qu'ici)"), 400: erreur('URL non autorisée ou données invalides'), 401: erreur('Token manquant'), 403: erreur('Accès refusé') },
+      },
+    },
+    '/api/webhooks/{id}': {
+      put: {
+        tags: ['Webhooks'], summary: 'Modifier un webhook (admin)', security: securite, parameters: [idParam()],
+        requestBody: { required: true, content: json({ $ref: '#/components/schemas/WebhookInput' }) },
+        responses: { 200: reponse('Webhook modifié'), 400: erreur('URL non autorisée ou données invalides'), 401: erreur('Token manquant'), 403: erreur('Accès refusé'), 404: erreur('Webhook introuvable') },
+      },
+      delete: {
+        tags: ['Webhooks'], summary: 'Supprimer un webhook (admin)', security: securite, parameters: [idParam()],
+        responses: { 200: reponse('Supprimé', { $ref: '#/components/schemas/Message' }), 401: erreur('Token manquant'), 403: erreur('Accès refusé'), 404: erreur('Webhook introuvable') },
+      },
+    },
+    '/api/webhooks/{id}/test': {
+      post: {
+        tags: ['Webhooks'], summary: 'Envoyer un événement test.ping (admin)', security: securite, parameters: [idParam()],
+        responses: { 200: reponse("Résultat de l'envoi", { type: 'object', properties: { succes: { type: 'boolean' }, statut_http: { type: 'integer', nullable: true }, duree_ms: { type: 'integer', nullable: true }, reponse: { type: 'string', nullable: true } } }), 401: erreur('Token manquant'), 403: erreur('Accès refusé'), 404: erreur('Webhook introuvable') },
+      },
+    },
+    '/api/webhooks/{id}/livraisons': {
+      get: {
+        tags: ['Webhooks'], summary: 'Les 50 derniers envois (admin)', security: securite, parameters: [idParam()],
+        responses: { 200: reponse('Envois'), 401: erreur('Token manquant'), 403: erreur('Accès refusé'), 404: erreur('Webhook introuvable') },
+      },
+    },
+    '/api/audit': {
+      get: {
+        tags: ["Journal d'audit"], summary: "Journal d'audit filtrable et paginé (admin)", security: securite,
+        parameters: [
+          { name: 'entite', in: 'query', schema: { type: 'string', example: 'produit' } },
+          { name: 'action', in: 'query', schema: { type: 'string', example: 'modifier' } },
+          { name: 'user_id', in: 'query', schema: { type: 'integer' } },
+          { name: 'du', in: 'query', description: 'AAAA-MM-JJ', schema: { type: 'string' } },
+          { name: 'au', in: 'query', description: 'AAAA-MM-JJ', schema: { type: 'string' } },
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'page', in: 'query', schema: { type: 'integer' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer' } },
+        ],
+        responses: { 200: reponse('{ data, pagination }'), 400: erreur('Filtre invalide'), 401: erreur('Token manquant'), 403: erreur('Accès refusé') },
+      },
+    },
+    '/api/emails': {
+      get: {
+        tags: ['Emails'], summary: "Boîte d'envoi (admin)", security: securite,
+        parameters: [{ name: 'page', in: 'query', schema: { type: 'integer' } }, { name: 'limit', in: 'query', schema: { type: 'integer' } }],
+        responses: { 200: reponse("{ data, pagination, mode: 'simulation' | 'smtp' }"), 401: erreur('Token manquant'), 403: erreur('Accès refusé') },
+      },
+    },
+    '/api/emails/{id}': {
+      get: {
+        tags: ['Emails'], summary: 'Un email avec son contenu HTML (admin)', security: securite, parameters: [idParam()],
+        responses: { 200: reponse('Email'), 401: erreur('Token manquant'), 403: erreur('Accès refusé'), 404: erreur('Email introuvable') },
+      },
+    },
+    '/api/emails/{id}/renvoyer': {
+      post: {
+        tags: ['Emails'], summary: 'Renvoyer un email (admin)', security: securite, parameters: [idParam()],
+        responses: { 200: reponse('Renvoyé', { $ref: '#/components/schemas/Message' }), 401: erreur('Token manquant'), 403: erreur('Accès refusé'), 404: erreur('Email introuvable') },
+      },
+    },
+    '/api/export/audit': {
+      get: {
+        tags: ['Export / Import'], summary: "Export CSV du journal d'audit (admin, mêmes filtres que /api/audit)", security: securite,
+        responses: { 200: { description: 'Fichier CSV', content: { 'text/csv': { schema: { type: 'string' } } } }, 401: erreur('Token manquant'), 403: erreur('Accès refusé') },
+      },
+    },
+
+    // =====================  CODES PROMO  =====================
+    '/api/codes-promo': {
+      get: {
+        tags: ['Codes promo'],
+        summary: 'Liste des codes promo (admin)',
+        security: securite,
+        responses: {
+          200: reponse('Codes promo', { type: 'array', items: { $ref: '#/components/schemas/CodePromo' } }),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+        },
+      },
+      post: {
+        tags: ['Codes promo'],
+        summary: 'Créer un code promo (admin)',
+        security: securite,
+        requestBody: { required: true, content: json({ $ref: '#/components/schemas/CodePromoInput' }) },
+        responses: {
+          201: reponse('Code créé', {
+            type: 'object',
+            properties: { id: { type: 'integer' }, message: { type: 'string' } },
+          }),
+          400: erreur('Données invalides'),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+          409: erreur('Ce code promo existe déjà'),
+        },
+      },
+    },
+    '/api/codes-promo/verifier': {
+      post: {
+        tags: ['Codes promo'],
+        summary: 'Vérifier un code promo pour un montant (utilisateur connecté)',
+        description:
+          'Calcule la remise sans rien consommer. Refus (400) avec un message précis : code inconnu, désactivé, expiré, ' +
+          "nombre d'utilisations atteint ou minimum de commande non atteint.",
+        security: securite,
+        requestBody: {
+          required: true,
+          content: json(
+            {
+              type: 'object',
+              required: ['code', 'montant'],
+              properties: { code: { type: 'string' }, montant: { type: 'number' } },
+            },
+            { code: 'BIENVENUE10', montant: 120 }
+          ),
+        },
+        responses: {
+          200: reponse(
+            'Code valide',
+            {
+              type: 'object',
+              properties: {
+                code: { type: 'string' },
+                type: { type: 'string', enum: ['pourcentage', 'montant'] },
+                valeur: { type: 'number' },
+                remise: { type: 'number' },
+                total_apres: { type: 'number' },
+              },
+            },
+            { code: 'BIENVENUE10', type: 'pourcentage', valeur: 10, remise: 12, total_apres: 108 }
+          ),
+          400: erreur('Code refusé ou données invalides'),
+          401: erreur('Token manquant'),
+        },
+      },
+    },
+    '/api/codes-promo/{id}': {
+      put: {
+        tags: ['Codes promo'],
+        summary: 'Modifier un code promo (admin)',
+        security: securite,
+        parameters: [idParam()],
+        requestBody: { required: true, content: json({ $ref: '#/components/schemas/CodePromoInput' }) },
+        responses: {
+          200: reponse('Code modifié', { $ref: '#/components/schemas/Message' }),
+          400: erreur('Données invalides'),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+          404: erreur('Code promo introuvable'),
+          409: erreur('Ce code promo existe déjà'),
+        },
+      },
+      delete: {
+        tags: ['Codes promo'],
+        summary: 'Supprimer un code promo (admin)',
+        security: securite,
+        parameters: [idParam()],
+        responses: {
+          200: reponse('Code supprimé', { $ref: '#/components/schemas/Message' }),
+          401: erreur('Token manquant'),
+          403: erreur('Accès refusé'),
+          404: erreur('Code promo introuvable'),
+        },
+      },
+    },
+
+    // =====================  EXPORT CSV  =====================
+    ...Object.fromEntries(
+      [
+        ['produits', 'les produits', 'id;nom;description;prix;stock;seuil_alerte;categorie;note_moyenne'],
+        ['commandes', 'les commandes', 'id;date;client;email;statut;code_promo;remise;total;adresse_livraison;ville;telephone'],
+        ['mouvements', "l'historique des mouvements de stock", 'id;date;produit;type;quantite;stock_apres;motif;utilisateur'],
+      ].map(([nom, libelle, colonnes]) => [
+        `/api/export/${nom}`,
+        {
+          get: {
+            tags: ['Export / Import'],
+            summary: `Exporter ${libelle} en CSV (admin)`,
+            description:
+              `Fichier \`${nom}.csv\` ouvrable dans Excel : UTF-8 avec BOM, séparateur \`;\`. Colonnes : \`${colonnes}\`. ` +
+              "Les cellules texte commençant par `=`, `+`, `-` ou `@` sont préfixées d'une apostrophe (protection contre l'injection de formules).",
+            security: securite,
+            responses: {
+              200: {
+                description: 'Fichier CSV',
+                content: { 'text/csv': { schema: { type: 'string' } } },
+              },
+              401: erreur('Token manquant'),
+              403: erreur('Accès refusé'),
+            },
+          },
+        },
+      ])
+    ),
   },
 };
 

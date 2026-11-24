@@ -8,7 +8,7 @@ const api = () => request(app);
 // Vide toutes les tables (dans le bon ordre pour les clés étrangères)
 async function reinitialiser() {
   await pool.query('SET FOREIGN_KEY_CHECKS = 0');
-  for (const t of ['achats_lignes', 'achats', 'fournisseurs', 'mouvements_stock', 'lignes_commande', 'commandes', 'produits', 'categories', 'users']) {
+  for (const t of ['webhook_livraisons', 'webhooks', 'api_keys', 'journal_audit', 'emails', 'avis', 'favoris', 'codes_promo', 'achats_lignes', 'achats', 'fournisseurs', 'mouvements_stock', 'lignes_commande', 'commandes', 'produits', 'categories', 'users']) {
     await pool.query(`TRUNCATE TABLE ${t}`);
   }
   await pool.query('SET FOREIGN_KEY_CHECKS = 1');

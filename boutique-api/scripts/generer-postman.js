@@ -43,6 +43,11 @@ for (const [chemin, ops] of Object.entries(spec.paths)) {
       item.request.header.push({ key: 'Content-Type', value: 'application/json' });
       item.request.body = { mode: 'raw', raw: JSON.stringify(corps.example ?? exemple(corps.schema), null, 2), options: { raw: { language: 'json' } } };
     }
+    // Routes partenaire : authentification par clé (X-API-Key) au lieu du token JWT
+    if (op.security && op.security.some((x) => x.apiKeyAuth)) {
+      item.request.auth = { type: 'noauth' };
+      item.request.header.push({ key: 'X-API-Key', value: '{{apiKey}}' });
+    }
     if (chemin === '/api/auth/login' || chemin === '/api/auth/register') {
       item.request.auth = { type: 'noauth' };
     }
@@ -61,13 +66,14 @@ for (const [chemin, ops] of Object.entries(spec.paths)) {
 const collection = {
   info: {
     name: 'Boutique API - Gestion d\'inventaire',
-    description: 'Exécuter d\'abord "POST /api/auth/login" : le token est stocké automatiquement dans la variable {{token}}.',
+    description: 'Exécuter d\'abord "POST /api/auth/login" : le token est stocké automatiquement dans la variable {{token}}. Pour les routes /api/partenaire : créer une clé dans l\'admin (Intégrations) puis la coller dans la variable {{apiKey}}.',
     schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
   },
   auth: { type: 'bearer', bearer: [{ key: 'token', value: '{{token}}', type: 'string' }] },
   variable: [
     { key: 'baseUrl', value: 'http://localhost:3000' },
     { key: 'token', value: '' },
+    { key: 'apiKey', value: 'bk_live_...' },
   ],
   item: Object.entries(dossiers).map(([name, item]) => ({ name, item })),
 };

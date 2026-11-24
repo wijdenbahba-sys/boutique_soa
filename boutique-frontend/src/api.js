@@ -1,9 +1,17 @@
 // Petit "client HTTP" : tous les appels vers le backend passent par ici.
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+// Les images envoyées par l'admin sont servies par l'API : /uploads/xxx -> http://localhost:3000/uploads/xxx
+export function imageSrc(cheminImage) {
+  if (!cheminImage) return null;
+  return /^https?:/.test(cheminImage) ? cheminImage : `${API_URL}${cheminImage}`;
+}
 
 // Avec { blob: true } on récupère un fichier (ex : la facture PDF) au lieu d'un JSON
 export async function api(chemin, { method = 'GET', body, token, blob = false } = {}) {
-  const headers = { 'Content-Type': 'application/json' };
+  // Un FormData (envoi de fichier) fixe lui-même son Content-Type : on ne le met pas à la main
+  const estFichier = typeof FormData !== 'undefined' && body instanceof FormData;
+  const headers = estFichier ? {} : { 'Content-Type': 'application/json' };
   // Si l'utilisateur est connecté, on envoie son token JWT dans l'en-tête
   if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -12,7 +20,7 @@ export async function api(chemin, { method = 'GET', body, token, blob = false } 
     reponse = await fetch(`${API_URL}${chemin}`, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
+      body: body ? (estFichier ? body : JSON.stringify(body)) : undefined,
     });
   } catch {
     // fetch échoue (et ne renvoie aucune réponse) quand le serveur est éteint

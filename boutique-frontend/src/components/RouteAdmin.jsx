@@ -1,6 +1,7 @@
 import { NavLink, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../AuthContext.jsx';
 import { useT } from '../i18n.jsx';
+import Icone from '../icons.jsx';
 
 // Protège toutes les pages /admin/... : il faut être connecté ET avoir le rôle admin.
 // (Le backend vérifie aussi le rôle sur chaque route : cette garde sert à l'affichage.)
@@ -27,18 +28,32 @@ export default function RouteAdmin() {
   }
 
   const classe = ({ isActive }) => (isActive ? 'actif' : '');
+  const lien = (to, cle, icone, end = false) => (
+    <NavLink to={to} end={end} className={classe}>
+      <Icone nom={icone} />{t(cle)}
+    </NavLink>
+  );
   return (
-    <>
-      <nav className="admin-nav">
-        <NavLink to="/admin" end className={classe}>{t('admin.nav.dashboard')}</NavLink>
-        <NavLink to="/admin/produits" className={classe}>{t('admin.nav.produits')}</NavLink>
-        <NavLink to="/admin/commandes" className={classe}>{t('admin.nav.commandes')}</NavLink>
-        <NavLink to="/admin/categories" className={classe}>{t('admin.nav.categories')}</NavLink>
-        <NavLink to="/admin/mouvements" className={classe}>{t('admin.nav.mouvements')}</NavLink>
-        <NavLink to="/admin/fournisseurs" className={classe}>{t('admin.nav.fournisseurs')}</NavLink>
-        <NavLink to="/admin/achats" className={classe}>{t('admin.nav.achats')}</NavLink>
+    <div className="admin-layout">
+      <nav className="sidebar" aria-label={t('nav.administration')}>
+        <div className="sidebar-titre">{t('admin.groupe.vue')}</div>
+        {lien('/admin', 'admin.nav.dashboard', 'tableau', true)}
+        <div className="sidebar-titre">{t('admin.groupe.catalogue')}</div>
+        {lien('/admin/produits', 'admin.nav.produits', 'produits')}
+        {lien('/admin/categories', 'admin.nav.categories', 'categories')}
+        {lien('/admin/codes-promo', 'admin.nav.promos', 'promo')}
+        <div className="sidebar-titre">{t('admin.groupe.ventes')}</div>
+        {lien('/admin/commandes', 'admin.nav.commandes', 'commandes')}
+        <div className="sidebar-titre">{t('admin.groupe.stock')}</div>
+        {lien('/admin/mouvements', 'admin.nav.mouvements', 'mouvements')}
+        {lien('/admin/fournisseurs', 'admin.nav.fournisseurs', 'fournisseurs')}
+        {lien('/admin/achats', 'admin.nav.achats', 'achats')}
+        <div className="sidebar-titre">{t('admin.groupe.plateforme')}</div>
+        {lien('/admin/integrations', 'admin.nav.integrations', 'cle')}
+        {lien('/admin/audit', 'admin.nav.audit', 'journal')}
+        {lien('/admin/emails', 'admin.nav.emails', 'courrier')}
       </nav>
-      <Outlet />
-    </>
+      <div className="admin-contenu"><Outlet /></div>
+    </div>
   );
 }

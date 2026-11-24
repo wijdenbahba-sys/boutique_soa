@@ -1,3 +1,4 @@
+import BoutonExport from '../../components/BoutonExport.jsx';
 import { Fragment, useEffect, useState } from 'react';
 import { useApi } from '../../useApi.js';
 import { useT } from '../../i18n.jsx';
@@ -8,6 +9,7 @@ import { STATUTS, formaterDate, formaterPrix } from '../../utils.js';
 // Statuts qu'un admin peut choisir dans la liste (l'annulation a son propre bouton : elle remet le stock)
 const STATUTS_CHOISISSABLES = ['en_attente', 'confirmee', 'expediee', 'livree'];
 const PAR_PAGE = 10;
+const CLASSES_PAIEMENT = { paye: 'badge-ok', en_attente: 'badge-faible', rembourse: 'badge-info', echoue: 'badge-rupture' };
 
 export default function AdminCommandes() {
   const appeler = useApi();
@@ -45,7 +47,7 @@ export default function AdminCommandes() {
     setSucces('');
     try {
       await appeler(`/api/commandes/${commande.id}/statut`, { method: 'PATCH', body: { statut } });
-      setCommandes((courant) => courant.map((c) => (c.id === commande.id ? { ...c, statut } : c)));
+      setCommandes((courant) => courant.map((c) => (c.id === commande.id ? { ...c, statut, statut_paiement: statut === 'livree' && c.mode_paiement === 'livraison' ? 'paye' : c.statut_paiement } : c)));
       setSucces(t('commandesAdmin.statutChange', { id: commande.id, statut: t(`statut.${statut}`) }));
     } catch (err) {
       if (err.status !== 401) setErreur(err.message);
@@ -58,7 +60,7 @@ export default function AdminCommandes() {
     setSucces('');
     try {
       await appeler(`/api/commandes/${commande.id}/annuler`, { method: 'PATCH' });
-      setCommandes((courant) => courant.map((c) => (c.id === commande.id ? { ...c, statut: 'annulee' } : c)));
+      setCommandes((courant) => courant.map((c) => (c.id === commande.id ? { ...c, statut: 'annulee', statut_paiement: c.statut_paiement === 'paye' ? 'rembourse' : c.statut_paiement } : c)));
       setSucces(t('commandesAdmin.annulee', { id: commande.id }));
     } catch (err) {
       if (err.status !== 401) setErreur(err.message);
@@ -84,6 +86,8 @@ export default function AdminCommandes() {
     <>
       <div className="entete-section">
         <h1>{t('commandesAdmin.titre')}</h1>
+        <div className="actions-ligne">
+        <BoutonExport ressource="commandes" />
         <select
           value={filtre}
           onChange={(e) => { setFiltre(e.target.value); setPage(1); }}
@@ -94,6 +98,7 @@ export default function AdminCommandes() {
             <option key={cle} value={cle}>{t(`statut.${cle}`)}</option>
           ))}
         </select>
+        </div>
       </div>
 
       {erreur && <p className="erreur">{erreur}</p>}
@@ -109,13 +114,14 @@ export default function AdminCommandes() {
                 <th>{t('commandesAdmin.client')}</th>
                 <th>{t('commun.date')}</th>
                 <th>{t('commun.total')}</th>
+                <th>{t('paiement.colonne')}</th>
                 <th>{t('commun.statut')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {commandes.length === 0 && (
-                <tr><td colSpan="6" className="muted">{t('commandesAdmin.aucune')}</td></tr>
+                <tr><td colSpan="7" className="muted">{t('commandesAdmin.aucune')}</td></tr>
               )}
               {commandes.map((c) => {
                 const classe = STATUTS[c.statut]?.classe || '';
@@ -131,6 +137,10 @@ export default function AdminCommandes() {
                       </td>
                       <td>{formaterDate(c.date_commande)}</td>
                       <td>{formaterPrix(c.total)}</td>
+                      <td>
+                        <span className={`badge ${CLASSES_PAIEMENT[c.statut_paiement] || ''}`}>{t(`paiement.statut.${c.statut_paiement}`)}</span>
+                        <div className="muted petit">{c.mode_paiement === 'carte' ? `${c.paiement_marque || ''} •••• ${c.paiement_last4 || ''}` : t('paiement.livraison')}</div>
+                      </td>
                       <td>
                         {c.statut === 'annulee' ? (
                           <span className={`badge ${classe}`}>{t('statut.annulee')}</span>
@@ -160,7 +170,7 @@ export default function AdminCommandes() {
                     </tr>
                     {ouverte === c.id && (
                       <tr className="ligne-detail">
-                        <td colSpan="6">
+                        <td colSpan="7">
                           {!detail ? (
                             <span className="muted">{t('commun.chargementDetail')}</span>
                           ) : (

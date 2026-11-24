@@ -25,7 +25,7 @@ Serveur : http://localhost:3000 · Swagger : http://localhost:3000/api-docs
 ## Tests
 
 ```bash
-npm test           # 94 tests (unitaires + intégration API)
+npm test           # 189 tests (unitaires + intégration API)
 npm run test:unit  # unitaires seulement (sans MySQL)
 ```
 Les tests d'intégration ont besoin de MySQL démarré. Ils utilisent une base séparée `boutique_test`, recréée automatiquement : la base `boutique_db` n'est jamais touchée.
@@ -38,8 +38,17 @@ Les tests d'intégration ont besoin de MySQL démarré. Ils utilisent une base s
 - **Facture PDF** : `GET /api/commandes/:id/facture` (propriétaire ou admin).
 - **Sécurité** : `helmet`, limitation de débit (300 req/15 min, 10 échecs de login/15 min, 20 inscriptions/h), validation `zod` avec messages en français (400), corps JSON limité à 100 ko, CORS configurable, requêtes SQL paramétrées.
 
+## Fonctionnalités v3
+- **Images produits** : `POST /api/produits/:id/image` (multer, jpeg/png/webp, 2 Mo max), fichiers servis sous `/uploads` (`UPLOAD_DIR` configurable).
+- **Favoris** (liste de souhaits du client) et **avis** (note 1 à 5 + commentaire, réservés aux clients ayant acheté le produit).
+- **Codes promo** (pourcentage ou montant, minimum de commande, expiration, nombre d'utilisations) : la remise est recalculée côté serveur dans la transaction de commande, et libérée à l'annulation.
+- **Livraison** : adresse, ville et téléphone enregistrés avec la commande et imprimés sur la facture.
+- **Profil** : modification du nom/email et du mot de passe.
+- **Export CSV** (produits, commandes, mouvements ; compatible Excel) et **import CSV** de produits (validation ligne par ligne, rapport d'erreurs).
+- Filtres produits : `prix_min`, `prix_max`, `en_stock=1`, tri par `note`.
+
 ## Documentation
-- Swagger : `/api-docs` (37 endpoints, vérifiés contre les vraies routes).
+- Swagger : `/api-docs` (77 endpoints, vérifiés contre les vraies routes).
 - Postman : importer `docs/boutique-api.postman_collection.json` ; lancer d'abord `POST /api/auth/login`, le token est enregistré automatiquement. Régénérer avec `npm run postman`.
 
 ## Structure
@@ -102,3 +111,21 @@ Authentification : en-tête `Authorization: Bearer <token>`. 401 = non authentif
 | GET | `/api/achats/{id}` | Détail d'un achat (admin) |
 | PATCH | `/api/achats/{id}/recevoir` | Réceptionner un achat (admin) |
 | PATCH | `/api/achats/{id}/annuler` | Annuler un achat (admin) |
+
+## Fonctionnalités v4 (plateforme)
+
+| Route | Rôle |
+|---|---|
+| `GET /api/evenements`, `GET /api/evenements/flux` | Historique et flux temps réel SSE (admin) |
+| `/api/cles-api` | Créer, désactiver, supprimer des clés partenaires (admin) |
+| `GET /api/partenaire/produits`, `/produits/:id`, `/stock` | API publique en lecture seule, en-tête `X-API-Key` |
+| `/api/webhooks` (+ `/:id/test`, `/:id/livraisons`) | Webhooks signés HMAC-SHA256 (admin) |
+| `GET /api/audit`, `GET /api/export/audit` | Journal d'audit filtrable et export CSV (admin) |
+| `/api/emails` | Boîte d'envoi : liste, aperçu, renvoi (admin) |
+| `POST /api/commandes` | Accepte `mode_paiement` (`livraison`/`carte`) et `carte` ; refus = HTTP 402 |
+
+Cartes de test : `4242 4242 4242 4242` (acceptée), `4000 0000 0000 0002` (refusée), `4000 0000 0000 9995` (fonds insuffisants).
+
+Variables d'environnement : `SMTP_*`, `EMAIL_FROM` (emails réels), `WEBHOOK_ALLOW_PRIVATE=true` (dev uniquement : autorise les webhooks vers localhost).
+
+**Migration depuis la v3** : exécuter `migration.sql` (idempotent) sur la base existante.

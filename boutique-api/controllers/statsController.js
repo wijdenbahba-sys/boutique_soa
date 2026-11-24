@@ -7,6 +7,7 @@ exports.getStats = async (req, res, next) => {
     const [[alertes]] = await pool.query('SELECT COUNT(*) AS total FROM produits WHERE stock <= seuil_alerte');
     const [[commandes]] = await pool.query('SELECT COUNT(*) AS total FROM commandes');
     const [[ca]] = await pool.query("SELECT COALESCE(SUM(total), 0) AS total FROM commandes WHERE statut <> 'annulee'");
+    const [[clients]] = await pool.query("SELECT COUNT(*) AS total FROM users WHERE role = 'client'");
     const [[achats]] = await pool.query("SELECT COUNT(*) AS total FROM achats WHERE statut = 'commande'");
 
     const [parStatut] = await pool.query('SELECT statut, COUNT(*) AS nombre FROM commandes GROUP BY statut');
@@ -29,6 +30,7 @@ exports.getStats = async (req, res, next) => {
       total_commandes: commandes.total,
       chiffre_affaires: Number(ca.total),
       achats_en_cours: achats.total,
+      nb_clients: clients.total,
       commandes_par_statut: parStatut,
       // SUM() peut revenir en texte selon le moteur (MySQL, MariaDB, TiDB) : on force un nombre
       top_produits: topProduits.map((t) => ({ ...t, quantite_vendue: Number(t.quantite_vendue) })),

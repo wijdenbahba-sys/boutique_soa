@@ -7,6 +7,10 @@ import BoutonFacture from '../components/BoutonFacture.jsx';
 import { STATUTS, formaterDate, formaterPrix } from '../utils.js';
 
 // Page réservée aux clients : historique de leurs commandes
+// Étapes du suivi d'une commande (hors annulation)
+const ETAPES = ['en_attente', 'confirmee', 'expediee', 'livree'];
+const CLASSES_PAIEMENT = { paye: 'badge-ok', en_attente: 'badge-faible', rembourse: 'badge-info', echoue: 'badge-rupture' };
+
 export default function MesCommandes() {
   const { user, token, logout } = useAuth();
   const navigate = useNavigate();
@@ -66,7 +70,7 @@ export default function MesCommandes() {
     try {
       await api(`/api/commandes/${id}/annuler`, { method: 'PATCH', token });
       // On met à jour la liste localement : pas besoin de tout recharger
-      setCommandes((courant) => courant.map((c) => (c.id === id ? { ...c, statut: 'annulee' } : c)));
+      setCommandes((courant) => courant.map((c) => (c.id === id ? { ...c, statut: 'annulee', statut_paiement: c.statut_paiement === 'paye' ? 'rembourse' : c.statut_paiement } : c)));
       setSucces(t('commandes.annulee', { id }));
     } catch (err) {
       if (err.status === 401) sessionExpiree();
@@ -110,9 +114,22 @@ export default function MesCommandes() {
               <div className="commande-tete">
                 <h3>{t('commandes.numero', { id: c.id })}</h3>
                 <span className={`badge ${statut.classe}`}>{statut.texte}</span>
+                <span className={`badge ${CLASSES_PAIEMENT[c.statut_paiement] || ''}`} title={c.mode_paiement === 'carte' ? `${c.paiement_marque || ''} •••• ${c.paiement_last4 || ''}` : t('paiement.livraison')}>
+                  {t(`paiement.statut.${c.statut_paiement}`)}
+                </span>
                 <span className="muted">{formaterDate(c.date_commande)}</span>
                 <strong className="commande-total">{formaterPrix(c.total)}</strong>
               </div>
+
+              {c.statut === 'annulee' ? null : (
+                <ol className="timeline" aria-label={t('commandes.suivi')}>
+                  {ETAPES.map((etape, i) => (
+                    <li key={etape} className={i < ETAPES.indexOf(c.statut) ? 'fait' : i === ETAPES.indexOf(c.statut) ? 'fait courant' : ''}>
+                      {t(`statut.${etape}`)}
+                    </li>
+                  ))}
+                </ol>
+              )}
 
               {ouverte === c.id && (
                 <div className="commande-lignes table-wrap">
@@ -134,6 +151,17 @@ export default function MesCommandes() {
                         ))}
                       </tbody>
                     </table>
+                  )}
+                  {detail && (Number(detail.remise) > 0 || detail.adresse_livraison) && (
+                    <div className="livraison-info">
+                      {Number(detail.remise) > 0 && (
+                        <span>{t('commandes.promo', { code: detail.code_promo || '', montant: formaterPrix(detail.remise) })}</span>
+                      )}
+                      {detail.adresse_livraison && (
+                        <span>{t('commandes.livreA', { adresse: [detail.adresse_livraison, detail.ville].filter(Boolean).join(', ') })}</span>
+                      )}
+                      {detail.telephone && <span>{t('commandes.tel', { tel: detail.telephone })}</span>}
+                    </div>
                   )}
                 </div>
               )}

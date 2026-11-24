@@ -37,6 +37,11 @@ Si l'API n'est pas sur `http://localhost:3000`, copier `.env.example` en `.env` 
 - **Catégories** : ajout, modification, suppression (confirmation avec le nombre de produits touchés ; ils sont conservés en « Sans catégorie »)
 - Accès protégé : un client qui tape `/admin` est renvoyé ; une session expirée (401) renvoie vers la connexion
 
+### Nouveautés v3
+- **Design** : thème clair/sombre, bannière à motif de zellige, barre latérale pour l'administration, police Cairo (latin + arabe)
+- Page détail produit, favoris, avis et notes, profil, suivi de commande
+- Panier avec code promo et livraison ; codes promo, upload d'images, import/export CSV côté admin
+
 ### Nouveautés v2
 - **Bilingue Français / العربية** : bouton de langue dans la barre de navigation, direction RTL automatique, choix mémorisé (`src/i18n.jsx`, `src/locales.js`)
 - **Graphiques** (Recharts) : ventes par jour (7/30/90 jours, CA ou commandes, vue tableau) et CA par catégorie

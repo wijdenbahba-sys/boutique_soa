@@ -1,5 +1,7 @@
 const pool = require('../config/db');
 const { enregistrerMouvement, ErreurHttp } = require('../utils/mouvements');
+const { journaliser } = require('../utils/audit');
+const { emettre } = require('../utils/evenements');
 
 // GET /api/achats?statut=commande   (admin)
 exports.getAll = async (req, res, next) => {
@@ -102,6 +104,7 @@ exports.creer = async (req, res, next) => {
     }
 
     await conn.commit();
+    await journaliser(req, { action: 'creer', entite: 'achat', entite_id: achat.insertId, details: { fournisseur_id: req.body.fournisseur_id, total } });
     res.status(201).json({ id: achat.insertId, statut: 'commande', total, message: 'Achat créé' });
   } catch (err) {
     await conn.rollback();
@@ -148,6 +151,8 @@ exports.recevoir = async (req, res, next) => {
     await conn.query("UPDATE achats SET statut = 'recu', date_reception = NOW() WHERE id = ?", [achat.id]);
 
     await conn.commit();
+    await journaliser(req, { action: 'recevoir', entite: 'achat', entite_id: achat.id, details: { total: Number(achat.total) } });
+    emettre('achat.recu', { id: achat.id, total: Number(achat.total), nb_produits: lignes.length });
     res.json({ id: achat.id, statut: 'recu', message: 'Achat reçu, stock mis à jour' });
   } catch (err) {
     await conn.rollback();
@@ -171,6 +176,7 @@ exports.annuler = async (req, res, next) => {
       return res.status(400).json({ message: `Impossible d'annuler un achat au statut "${rows[0].statut}"` });
     }
     await pool.query("UPDATE achats SET statut = 'annule' WHERE id = ?", [req.params.id]);
+    await journaliser(req, { action: 'annuler', entite: 'achat', entite_id: Number(req.params.id) });
     res.json({ id: Number(req.params.id), statut: 'annule', message: 'Achat annulé' });
   } catch (err) {
     next(err);

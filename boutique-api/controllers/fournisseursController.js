@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { journaliser } = require('../utils/audit');
 
 // GET /api/fournisseurs
 exports.getAll = async (req, res, next) => {
@@ -31,6 +32,7 @@ exports.create = async (req, res, next) => {
       'INSERT INTO fournisseurs (nom, email, telephone, adresse) VALUES (?, ?, ?, ?)',
       [nom, email, telephone, adresse]
     );
+    await journaliser(req, { action: 'creer', entite: 'fournisseur', entite_id: result.insertId, details: { nom } });
     res.status(201).json({ id: result.insertId, nom, email, telephone, adresse });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
@@ -51,6 +53,7 @@ exports.update = async (req, res, next) => {
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Fournisseur introuvable' });
     }
+    await journaliser(req, { action: 'modifier', entite: 'fournisseur', entite_id: Number(req.params.id), details: { nom } });
     res.json({ id: Number(req.params.id), nom, email, telephone, adresse });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
@@ -67,6 +70,7 @@ exports.remove = async (req, res, next) => {
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Fournisseur introuvable' });
     }
+    await journaliser(req, { action: 'supprimer', entite: 'fournisseur', entite_id: Number(req.params.id) });
     res.json({ message: 'Fournisseur supprimé' });
   } catch (err) {
     if (err.code === 'ER_ROW_IS_REFERENCED_2') {

@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Boutique API - Gestion d'inventaire",
-    "description": "Exécuter d'abord \"POST /api/auth/login\" : le token est stocké automatiquement dans la variable {{token}}.",
+    "description": "Exécuter d'abord \"POST /api/auth/login\" : le token est stocké automatiquement dans la variable {{token}}. Pour les routes /api/partenaire : créer une clé dans l'admin (Intégrations) puis la coller dans la variable {{apiKey}}.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -22,6 +22,10 @@
     {
       "key": "token",
       "value": ""
+    },
+    {
+      "key": "apiKey",
+      "value": "bk_live_..."
     }
   ],
   "item": [
@@ -137,6 +141,76 @@
               "variable": []
             },
             "description": "Infos de l'utilisateur connecté"
+          }
+        },
+        {
+          "name": "PUT /api/auth/profil - Modifier son nom et son email",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/profil",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profil"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Modifier son nom et son email",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nom\": \"Sarra B.\",\n  \"email\": \"sarra@test.tn\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PUT /api/auth/mot-de-passe - Changer son mot de passe",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/mot-de-passe",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "mot-de-passe"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Changer son mot de passe",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ancien\": \"ancienMotDePasse\",\n  \"nouveau\": \"nouveauMotDePasse\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         }
       ]
@@ -322,6 +396,21 @@
                 },
                 {
                   "key": "alerte",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "prix_min",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "prix_max",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "en_stock",
                   "value": "",
                   "disabled": true
                 },
@@ -538,6 +627,60 @@
               }
             }
           }
+        },
+        {
+          "name": "POST /api/produits/{id}/image - Envoyer l'image d'un produit (admin)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/produits/:id/image",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "produits",
+                ":id",
+                "image"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Envoi `multipart/form-data` avec un champ fichier `image` : JPEG, PNG ou WebP, 2 Mo maximum. Le type est vérifié sur le contenu réel du fichier. L'ancienne image est supprimée. Le fichier est ensuite servi sur `/uploads/<nom>`."
+          }
+        },
+        {
+          "name": "DELETE /api/produits/{id}/image - Supprimer l'image d'un produit (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/produits/:id/image",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "produits",
+                ":id",
+                "image"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Supprimer l'image d'un produit (admin)"
+          }
         }
       ]
     },
@@ -566,10 +709,10 @@
               "query": [],
               "variable": []
             },
-            "description": "Vérifie le stock, calcule le total et décrémente le stock dans une **transaction MySQL** : si un produit manque de stock, rien n'est enregistré.",
+            "description": "Vérifie le stock, calcule le total et décrémente le stock dans une **transaction MySQL** : si un produit manque de stock ou si le code promo est refusé, rien n'est enregistré. Le code promo (facultatif) est revalidé et la remise recalculée par le serveur ; annuler la commande libère le code.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"produits\": [\n    {\n      \"produit_id\": 1,\n      \"quantite\": 2\n    },\n    {\n      \"produit_id\": 2,\n      \"quantite\": 1\n    }\n  ]\n}",
+              "raw": "{\n  \"produits\": [\n    {\n      \"produit_id\": 1,\n      \"quantite\": 2\n    },\n    {\n      \"produit_id\": 2,\n      \"quantite\": 1\n    }\n  ],\n  \"code_promo\": \"BIENVENUE10\",\n  \"adresse_livraison\": \"12 rue de la Plage\",\n  \"ville\": \"Mahdia\",\n  \"telephone\": \"22 333 444\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1210,6 +1353,1111 @@
               ]
             },
             "description": "Possible seulement tant que l'achat n'est pas reçu."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Export / Import",
+      "item": [
+        {
+          "name": "POST /api/produits/import - Importer des produits en masse (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/produits/import",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "produits",
+                "import"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Jusqu'à 500 lignes. Les catégories sont retrouvées par leur nom (créées si besoin). Les lignes invalides ou en doublon (nom déjà existant) sont ignorées et listées dans `erreurs` ; les autres sont importées.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"produits\": [\n    {\n      \"nom\": \"Écran 24 pouces\",\n      \"prix\": 199.9,\n      \"stock\": 8,\n      \"seuil_alerte\": 2,\n      \"categorie\": \"Informatique\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/export/audit - Export CSV du journal d'audit (admin, mêmes filtres que /api/audit)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/export/audit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "export",
+                "audit"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Export CSV du journal d'audit (admin, mêmes filtres que /api/audit)"
+          }
+        },
+        {
+          "name": "GET /api/export/produits - Exporter les produits en CSV (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/export/produits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "export",
+                "produits"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Fichier `produits.csv` ouvrable dans Excel : UTF-8 avec BOM, séparateur `;`. Colonnes : `id;nom;description;prix;stock;seuil_alerte;categorie;note_moyenne`. Les cellules texte commençant par `=`, `+`, `-` ou `@` sont préfixées d'une apostrophe (protection contre l'injection de formules)."
+          }
+        },
+        {
+          "name": "GET /api/export/commandes - Exporter les commandes en CSV (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/export/commandes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "export",
+                "commandes"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Fichier `commandes.csv` ouvrable dans Excel : UTF-8 avec BOM, séparateur `;`. Colonnes : `id;date;client;email;statut;code_promo;remise;total;adresse_livraison;ville;telephone`. Les cellules texte commençant par `=`, `+`, `-` ou `@` sont préfixées d'une apostrophe (protection contre l'injection de formules)."
+          }
+        },
+        {
+          "name": "GET /api/export/mouvements - Exporter l'historique des mouvements de stock en CSV (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/export/mouvements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "export",
+                "mouvements"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Fichier `mouvements.csv` ouvrable dans Excel : UTF-8 avec BOM, séparateur `;`. Colonnes : `id;date;produit;type;quantite;stock_apres;motif;utilisateur`. Les cellules texte commençant par `=`, `+`, `-` ou `@` sont préfixées d'une apostrophe (protection contre l'injection de formules)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Avis",
+      "item": [
+        {
+          "name": "GET /api/produits/{id}/avis - Avis d'un produit (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/produits/:id/avis",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "produits",
+                ":id",
+                "avis"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Avis d'un produit (public)"
+          }
+        },
+        {
+          "name": "POST /api/produits/{id}/avis - Donner ou modifier son avis (client ayant acheté le produit)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/produits/:id/avis",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "produits",
+                ":id",
+                "avis"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Réservé aux clients qui ont une commande non annulée contenant ce produit (sinon 403 « Achat requis »). Un second envoi remplace le premier avis (un seul avis par client et par produit).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": 4,\n  \"commentaire\": \"Livraison rapide, produit conforme.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/avis/{id} - Supprimer un avis (auteur ou admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/avis/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "avis",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Supprimer un avis (auteur ou admin)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Favoris",
+      "item": [
+        {
+          "name": "GET /api/favoris - Mes produits favoris (client)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/favoris",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "favoris"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Mes produits favoris (client)"
+          }
+        },
+        {
+          "name": "GET /api/favoris/ids - Identifiants de mes favoris (client)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/favoris/ids",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "favoris",
+                "ids"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Léger : sert à afficher les cœurs du catalogue."
+          }
+        },
+        {
+          "name": "POST /api/favoris/{produitId} - Ajouter un produit aux favoris (client)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/favoris/:produitId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "favoris",
+                ":produitId"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "produitId",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "201 si ajouté, 200 s'il y était déjà (opération idempotente)."
+          }
+        },
+        {
+          "name": "DELETE /api/favoris/{produitId} - Retirer un produit des favoris (client)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/favoris/:produitId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "favoris",
+                ":produitId"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "produitId",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Retirer un produit des favoris (client)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Temps réel",
+      "item": [
+        {
+          "name": "GET /api/evenements - Les 50 derniers événements (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/evenements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evenements"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Les 50 derniers événements (admin)"
+          }
+        },
+        {
+          "name": "GET /api/evenements/flux - Flux temps réel (Server-Sent Events, admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/evenements/flux",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evenements",
+                "flux"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Connexion HTTP gardée ouverte (`text/event-stream`). Chaque événement est poussé dès qu'il se produit : commande.creee, commande.statut, commande.annulee, stock.bas, achat.recu, avis.cree."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Clés API",
+      "item": [
+        {
+          "name": "GET /api/cles-api - Liste des clés (admin) — jamais la clé complète",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cles-api",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cles-api"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Liste des clés (admin) — jamais la clé complète"
+          }
+        },
+        {
+          "name": "POST /api/cles-api - Créer une clé (admin) — affichée une seule fois",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cles-api",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cles-api"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Créer une clé (admin) — affichée une seule fois",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nom\": \"Site partenaire\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PUT /api/cles-api/{id} - Activer / désactiver une clé (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cles-api/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cles-api",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Activer / désactiver une clé (admin)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"actif\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/cles-api/{id} - Supprimer une clé (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cles-api/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cles-api",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Supprimer une clé (admin)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Partenaire",
+      "item": [
+        {
+          "name": "GET /api/partenaire/produits - Catalogue (lecture seule) — clé API",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/partenaire/produits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "partenaire",
+                "produits"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "categorie",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "disabled": true
+                }
+              ],
+              "variable": []
+            },
+            "description": "Catalogue (lecture seule) — clé API",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "GET /api/partenaire/produits/{id} - Un produit — clé API",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/partenaire/produits/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "partenaire",
+                "produits",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Un produit — clé API",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "GET /api/partenaire/stock - Niveaux de stock — clé API",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/partenaire/stock",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "partenaire",
+                "stock"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Niveaux de stock — clé API",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "GET /api/webhooks - Liste des webhooks (admin) — sans le secret",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Liste des webhooks (admin) — sans le secret"
+          }
+        },
+        {
+          "name": "POST /api/webhooks - Créer un webhook (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Chaque envoi est un POST JSON signé : en-tête `X-Boutique-Signature` = HMAC-SHA256(corps, secret) en hexadécimal. 3 tentatives en cas d'échec réseau ou 5xx. Les adresses privées/locales sont refusées (protection SSRF).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://exemple.tn/hook\",\n  \"evenements\": [\n    \"commande.creee\",\n    \"stock.bas\"\n  ],\n  \"actif\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PUT /api/webhooks/{id} - Modifier un webhook (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Modifier un webhook (admin)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://exemple.tn/hook\",\n  \"evenements\": [\n    \"commande.creee\",\n    \"stock.bas\"\n  ],\n  \"actif\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/webhooks/{id} - Supprimer un webhook (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Supprimer un webhook (admin)"
+          }
+        },
+        {
+          "name": "POST /api/webhooks/{id}/test - Envoyer un événement test.ping (admin)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/:id/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                ":id",
+                "test"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Envoyer un événement test.ping (admin)"
+          }
+        },
+        {
+          "name": "GET /api/webhooks/{id}/livraisons - Les 50 derniers envois (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/:id/livraisons",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                ":id",
+                "livraisons"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Les 50 derniers envois (admin)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Journal d'audit",
+      "item": [
+        {
+          "name": "GET /api/audit - Journal d'audit filtrable et paginé (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/audit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit"
+              ],
+              "query": [
+                {
+                  "key": "entite",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "action",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "user_id",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "du",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "au",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "disabled": true
+                }
+              ],
+              "variable": []
+            },
+            "description": "Journal d'audit filtrable et paginé (admin)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Emails",
+      "item": [
+        {
+          "name": "GET /api/emails - Boîte d'envoi (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/emails",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "emails"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "disabled": true
+                }
+              ],
+              "variable": []
+            },
+            "description": "Boîte d'envoi (admin)"
+          }
+        },
+        {
+          "name": "GET /api/emails/{id} - Un email avec son contenu HTML (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/emails/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "emails",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Un email avec son contenu HTML (admin)"
+          }
+        },
+        {
+          "name": "POST /api/emails/{id}/renvoyer - Renvoyer un email (admin)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/emails/:id/renvoyer",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "emails",
+                ":id",
+                "renvoyer"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Renvoyer un email (admin)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Codes promo",
+      "item": [
+        {
+          "name": "GET /api/codes-promo - Liste des codes promo (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/codes-promo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "codes-promo"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Liste des codes promo (admin)"
+          }
+        },
+        {
+          "name": "POST /api/codes-promo - Créer un code promo (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/codes-promo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "codes-promo"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Créer un code promo (admin)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"ETE20\",\n  \"type\": \"pourcentage\",\n  \"valeur\": 20,\n  \"min_commande\": 50,\n  \"date_expiration\": \"2026-12-31\",\n  \"utilisations_max\": 100,\n  \"actif\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/codes-promo/verifier - Vérifier un code promo pour un montant (utilisateur connecté)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/codes-promo/verifier",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "codes-promo",
+                "verifier"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Calcule la remise sans rien consommer. Refus (400) avec un message précis : code inconnu, désactivé, expiré, nombre d'utilisations atteint ou minimum de commande non atteint.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"BIENVENUE10\",\n  \"montant\": 120\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PUT /api/codes-promo/{id} - Modifier un code promo (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/codes-promo/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "codes-promo",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Modifier un code promo (admin)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"ETE20\",\n  \"type\": \"pourcentage\",\n  \"valeur\": 20,\n  \"min_commande\": 50,\n  \"date_expiration\": \"2026-12-31\",\n  \"utilisations_max\": 100,\n  \"actif\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/codes-promo/{id} - Supprimer un code promo (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/codes-promo/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "codes-promo",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Supprimer un code promo (admin)"
           }
         }
       ]

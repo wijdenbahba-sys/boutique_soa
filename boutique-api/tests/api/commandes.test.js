@@ -103,7 +103,10 @@ describe('Consultation et droits', () => {
   test('mes-commandes : un client ne voit que les siennes', async () => {
     const mes = (await api().get('/api/commandes/mes-commandes').set(avec(client.token))).body;
     expect(mes.length).toBeGreaterThan(0);
-    expect((await api().get('/api/commandes/mes-commandes').set(avec(autreClient.token))).body).toEqual([]);
+    expect(mes.some((c) => c.id === commandeId)).toBe(true);
+    // (autreClient peut avoir gagné la course du test précédent : on vérifie seulement qu'il ne voit pas NOTRE commande)
+    const siennes = (await api().get('/api/commandes/mes-commandes').set(avec(autreClient.token))).body;
+    expect(siennes.some((c) => c.id === commandeId)).toBe(false);
   });
 
   test("le détail d'une commande est réservé à son propriétaire et à l'admin", async () => {

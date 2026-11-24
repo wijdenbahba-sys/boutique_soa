@@ -1,3 +1,4 @@
+import BoutonExport from '../../components/BoutonExport.jsx';
 import { useEffect, useState } from 'react';
 import { useApi } from '../../useApi.js';
 import { useT } from '../../i18n.jsx';
@@ -58,7 +59,10 @@ export default function AdminMouvements() {
 
   return (
     <>
-      <h1>{t('mouvements.titre')}</h1>
+      <div className="entete-section">
+        <h1>{t('mouvements.titre')}</h1>
+        <BoutonExport ressource="mouvements" />
+      </div>
       <p className="muted">{t('mouvements.intro')}</p>
 
       <div className="filtres">

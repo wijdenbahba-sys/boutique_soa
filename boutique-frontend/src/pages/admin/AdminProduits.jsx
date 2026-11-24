@@ -3,6 +3,10 @@ import { Link, useLocation } from 'react-router-dom';
 import { useApi } from '../../useApi.js';
 import { useDebounce } from '../../useDebounce.js';
 import { useT } from '../../i18n.jsx';
+import { imageSrc } from '../../api.js';
+import { teinte } from '../../components/ProduitCard.jsx';
+import BoutonExport from '../../components/BoutonExport.jsx';
+import ImportProduits from '../../components/ImportProduits.jsx';
 import Pagination from '../../components/Pagination.jsx';
 import { formaterPrix } from '../../utils.js';
 
@@ -100,8 +104,17 @@ export default function AdminProduits() {
     <>
       <div className="entete-section">
         <h1>{t('produits.titre')}</h1>
-        <Link to="/admin/produits/nouveau" className="btn">{t('produits.ajouter')}</Link>
+        <div className="actions-ligne">
+          <BoutonExport ressource="produits" />
+          <Link to="/admin/produits/nouveau" className="btn">{t('produits.ajouter')}</Link>
+        </div>
       </div>
+
+      <details className="card section-espace-bas">
+        <summary><strong>{t('import.titre')}</strong></summary>
+        <p className="muted petit">{t('import.aide')}</p>
+        <ImportProduits onTermine={() => setRecharger((n) => n + 1)} />
+      </details>
 
       <div className="filtres">
         <input
@@ -151,10 +164,17 @@ export default function AdminProduits() {
               )}
               {produits.map((p) => (
                 <tr key={p.id}>
-                  <td><strong>{p.nom}</strong></td>
-                  <td>{p.categorie_nom || <span className="muted">{t('produit.sansCategorie')}</span>}</td>
-                  <td>{formaterPrix(p.prix)}</td>
                   <td>
+                    <div className="actions-ligne">
+                      {p.image_url
+                        ? <img className="miniature" src={imageSrc(p.image_url)} alt="" loading="lazy" />
+                        : <span className="miniature-vide" style={{ '--teinte': teinte(p.id) }}>{p.nom.charAt(0).toUpperCase()}</span>}
+                      <strong>{p.nom}</strong>
+                    </div>
+                  </td>
+                  <td>{p.categorie_nom || <span className="muted">{t('produit.sansCategorie')}</span>}</td>
+                  <td className="nowrap">{formaterPrix(p.prix)}</td>
+                  <td className="nowrap">
                     <span className={`badge ${p.stock <= 0 ? 'badge-rupture' : p.stock <= p.seuil_alerte ? 'badge-faible' : 'badge-ok'}`}>
                       {p.stock}
                     </span>

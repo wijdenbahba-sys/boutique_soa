@@ -2,12 +2,19 @@ const PDFDocument = require('pdfkit');
 const pool = require('../config/db');
 const { enregistrerMouvement, ErreurHttp } = require('../utils/mouvements');
 const { lirePagination, construireTri, reponsePaginee } = require('../utils/pagination');
+const { calculerRemise, arrondi } = require('../utils/promo');
+const paiement = require('../services/paiement');
+const { emettre } = require('../utils/evenements');
+const { emettreStockBas } = require('../utils/stockBas');
+const { journaliser } = require('../utils/audit');
 
 const STATUTS_MODIFIABLES = ['en_attente', 'confirmee', 'expediee', 'livree'];
 const COLONNES_TRI = { date: 'c.date_commande', total: 'c.total', statut: 'c.statut', id: 'c.id' };
 
 // POST /api/commandes
-// body : { "produits": [ { "produit_id": 1, "quantite": 2 }, { "produit_id": 3, "quantite": 1 } ] }
+// body : { "produits": [ { "produit_id": 1, "quantite": 2 }, ... ], "code_promo": "BIENVENUE10",
+//          "adresse_livraison": "12 rue ...", "ville": "Mahdia", "telephone": "22 333 444" }
+// Le code promo, l'adresse, la ville et le téléphone sont facultatifs. La remise est recalculée ICI, jamais crue sur parole.
 exports.creer = async (req, res, next) => {
   // Regroupe les doublons (le corps est déjà validé par le middleware)
   const quantites = new Map();
@@ -19,6 +26,7 @@ exports.creer = async (req, res, next) => {
   const lignes = [...quantites.entries()].sort((a, b) => a[0] - b[0]);
 
   const conn = await pool.getConnection();
+  let anciensStocks = [];
   try {
     await conn.beginTransaction();
 
@@ -27,7 +35,7 @@ exports.creer = async (req, res, next) => {
 
     for (const [produitId, quantite] of lignes) {
       // FOR UPDATE verrouille la ligne : personne d'autre ne peut modifier ce stock pendant la transaction
-      const [rows] = await conn.query('SELECT id, nom, prix, stock FROM produits WHERE id = ? FOR UPDATE', [produitId]);
+      const [rows] = await conn.query('SELECT id, nom, prix, stock, seuil_alerte FROM produits WHERE id = ? FOR UPDATE', [produitId]);
       const produit = rows[0];
 
       if (!produit) {
@@ -37,13 +45,45 @@ exports.creer = async (req, res, next) => {
         throw new ErreurHttp(400, `Stock insuffisant pour "${produit.nom}" (disponible : ${produit.stock})`);
       }
 
+      anciensStocks.push({ id: produit.id, stock: produit.stock, seuil_alerte: produit.seuil_alerte });
       total += produit.prix * quantite;
       lignesCalculees.push({ produitId, quantite, prix: produit.prix });
     }
 
-    total = Math.round(total * 100) / 100;
+    total = arrondi(total);
 
-    const [commande] = await conn.query('INSERT INTO commandes (user_id, total) VALUES (?, ?)', [req.user.id, total]);
+    // Code promo : verrouillé (FOR UPDATE) pour que deux commandes simultanées ne dépassent pas "utilisations_max"
+    let remise = 0;
+    let codePromo = null;
+    if (req.body.code_promo) {
+      const promo = await calculerRemise(conn, req.body.code_promo, total, { verrou: true });
+      remise = promo.remise;
+      codePromo = promo.code;
+      await conn.query('UPDATE codes_promo SET utilisations = utilisations + 1 WHERE code = ?', [codePromo]);
+    }
+    const sousTotal = total;
+    total = arrondi(total - remise);
+
+    // Paiement par carte (simulé) : si la banque refuse, on lève une erreur 402 AVANT d'écrire quoi que ce soit.
+    // Le rollback annule alors aussi la réservation du code promo : ni stock débité, ni commande créée.
+    const { adresse_livraison, ville, telephone } = req.body;
+    const modePaiement = req.body.mode_paiement || 'livraison';
+    let pay = { statut: 'en_attente', marque: null, last4: null, reference: null };
+    if (modePaiement === 'carte') {
+      const auth = await paiement.autoriser(req.body.carte, total);
+      if (!auth.succes) {
+        throw new ErreurHttp(402, `Paiement refusé : ${auth.message}`);
+      }
+      pay = { statut: 'paye', marque: auth.marque, last4: auth.last4, reference: auth.reference };
+    }
+
+    const [commande] = await conn.query(
+      `INSERT INTO commandes (user_id, total, code_promo, remise, adresse_livraison, ville, telephone,
+                              mode_paiement, statut_paiement, paiement_marque, paiement_last4, paiement_reference)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.user.id, total, codePromo, remise, adresse_livraison, ville, telephone,
+        modePaiement, pay.statut, pay.marque, pay.last4, pay.reference]
+    );
 
     for (const l of lignesCalculees) {
       await conn.query(
@@ -62,7 +102,25 @@ exports.creer = async (req, res, next) => {
     }
 
     await conn.commit();
-    res.status(201).json({ id: commande.insertId, statut: 'en_attente', total, message: 'Commande créée' });
+
+    // Après le commit : les abonnés (SSE, webhooks, emails) ne peuvent plus faire échouer la commande
+    let clientNom = null;
+    try {
+      const [u] = await pool.query('SELECT nom FROM users WHERE id = ?', [req.user.id]);
+      clientNom = u[0] ? u[0].nom : null;
+    } catch (e) { /* sans importance */ }
+    emettre('commande.creee', {
+      id: commande.insertId, client_id: req.user.id, client_nom: clientNom, total, mode_paiement: modePaiement,
+      statut_paiement: pay.statut, nb_articles: lignesCalculees.reduce((n, l) => n + l.quantite, 0),
+    });
+    await emettreStockBas(anciensStocks);
+
+    res.status(201).json({
+      id: commande.insertId, statut: 'en_attente', sous_total: sousTotal, remise, code_promo: codePromo, total,
+      mode_paiement: modePaiement, statut_paiement: pay.statut,
+      paiement: modePaiement === 'carte' ? { marque: pay.marque, last4: pay.last4, reference: pay.reference } : null,
+      message: modePaiement === 'carte' ? 'Paiement accepté, commande créée' : 'Commande créée',
+    });
   } catch (err) {
     await conn.rollback();
     if (err instanceof ErreurHttp) {
@@ -162,7 +220,7 @@ exports.changerStatut = async (req, res, next) => {
       return res.status(400).json({ message: `Statut invalide. Valeurs possibles : ${STATUTS_MODIFIABLES.join(', ')}` });
     }
 
-    const [rows] = await pool.query('SELECT statut FROM commandes WHERE id = ?', [req.params.id]);
+    const [rows] = await pool.query('SELECT statut, statut_paiement, mode_paiement, total FROM commandes WHERE id = ?', [req.params.id]);
     if (!rows[0]) {
       return res.status(404).json({ message: 'Commande introuvable' });
     }
@@ -170,8 +228,17 @@ exports.changerStatut = async (req, res, next) => {
       return res.status(400).json({ message: 'Une commande annulée ne peut plus changer de statut' });
     }
 
-    await pool.query('UPDATE commandes SET statut = ? WHERE id = ?', [statut, req.params.id]);
-    res.json({ id: Number(req.params.id), statut });
+    // Paiement à la livraison : l'argent est encaissé quand la commande est livrée
+    const encaisse = statut === 'livree' && rows[0].mode_paiement === 'livraison' && rows[0].statut_paiement === 'en_attente';
+    await pool.query(
+      `UPDATE commandes SET statut = ?${encaisse ? ", statut_paiement = 'paye'" : ''} WHERE id = ?`,
+      [statut, req.params.id]
+    );
+
+    const id = Number(req.params.id);
+    await journaliser(req, { action: 'changer_statut', entite: 'commande', entite_id: id, details: { avant: rows[0].statut, apres: statut } });
+    emettre('commande.statut', { id, ancien: rows[0].statut, nouveau: statut, total: Number(rows[0].total) });
+    res.json({ id, statut, statut_paiement: encaisse ? 'paye' : rows[0].statut_paiement });
   } catch (err) {
     next(err);
   }
@@ -212,10 +279,21 @@ exports.annuler = async (req, res, next) => {
         motif: `Annulation de la commande n°${commande.id}`,
       });
     }
-    await conn.query("UPDATE commandes SET statut = 'annulee' WHERE id = ?", [commande.id]);
+    // Le code promo utilisé redevient disponible
+    if (commande.code_promo) {
+      await conn.query('UPDATE codes_promo SET utilisations = GREATEST(utilisations - 1, 0) WHERE code = ?', [commande.code_promo]);
+    }
+    // Commande payée par carte : remboursement simulé
+    const rembourse = commande.statut_paiement === 'paye' && commande.mode_paiement === 'carte';
+    await conn.query(
+      `UPDATE commandes SET statut = 'annulee'${rembourse ? ", statut_paiement = 'rembourse'" : ''} WHERE id = ?`,
+      [commande.id]
+    );
 
     await conn.commit();
-    res.json({ id: commande.id, statut: 'annulee', message: 'Commande annulée, stock remis à jour' });
+    await journaliser(req, { action: 'annuler', entite: 'commande', entite_id: commande.id, details: { rembourse, par_admin: req.user.role === 'admin' } });
+    emettre('commande.annulee', { id: commande.id, total: Number(commande.total), rembourse, par: req.user.role });
+    res.json({ id: commande.id, statut: 'annulee', statut_paiement: rembourse ? 'rembourse' : commande.statut_paiement, message: 'Commande annulée, stock remis à jour' });
   } catch (err) {
     await conn.rollback();
     if (err instanceof ErreurHttp) {
@@ -274,6 +352,15 @@ exports.facture = async (req, res, next) => {
     doc.fontSize(12).fillColor('#1f2430').text(commande.client_nom, 50, 140);
     doc.fontSize(10).fillColor('#667085').text(commande.client_email, 50, 157);
 
+    // Adresse de livraison (si renseignée)
+    const adresse = [commande.adresse_livraison, commande.ville].filter(Boolean).join(', ');
+    if (adresse || commande.telephone) {
+      doc.fontSize(10).fillColor('#667085').text('LIVRAISON', 330, 125);
+      doc.fontSize(10).fillColor('#1f2430');
+      if (adresse) doc.text(adresse, 330, 140, { width: 215 });
+      if (commande.telephone) doc.text(`Tél : ${commande.telephone}`, 330, doc.y + 2, { width: 215 });
+    }
+
     // Tableau des lignes
     let y = 200;
     doc.rect(50, y, 495, 24).fill('#f5f6f8');
@@ -298,13 +385,28 @@ exports.facture = async (req, res, next) => {
       doc.moveTo(50, y - 5).lineTo(545, y - 5).strokeColor('#e3e6ec').stroke();
     }
 
-    // Total
+    // Sous-total et remise (seulement s'il y a un code promo)
     y += 10;
+    if (commande.remise > 0) {
+      doc.fontSize(10).fillColor('#667085').text('Sous-total', 330, y, { width: 125, align: 'right' });
+      doc.fillColor('#1f2430').text(dt(Number(commande.total) + Number(commande.remise)), 460, y, { width: 80, align: 'right' });
+      y += 18;
+      doc.fillColor('#667085').text(`Remise${commande.code_promo ? ` (${commande.code_promo})` : ''}`, 300, y, { width: 155, align: 'right' });
+      doc.fillColor('#1f2430').text(`- ${dt(commande.remise)}`, 460, y, { width: 80, align: 'right' });
+      y += 22;
+    }
+
+    // Total
     doc.fontSize(13).fillColor('#1f2430').text('TOTAL', 330, y, { width: 125, align: 'right' });
     doc.fontSize(13).fillColor('#2f5bea').text(dt(commande.total), 460, y, { width: 80, align: 'right' });
 
+    const libPaiement = commande.mode_paiement === 'carte'
+      ? `Payé par carte ${commande.paiement_marque || ''} •••• ${commande.paiement_last4 || ''}${commande.statut_paiement === 'rembourse' ? ' (remboursé)' : ''}`
+      : (commande.statut_paiement === 'paye' ? 'Payé à la livraison' : 'Paiement à la livraison');
+    doc.fontSize(10).fillColor('#667085').text(libPaiement, 50, y + 28, { width: 495, align: 'right' });
+
     doc.fontSize(9).fillColor('#667085')
-      .text('Merci pour votre commande.', 50, y + 60, { width: 495, align: 'center' });
+      .text('Merci pour votre commande.', 50, y + 70, { width: 495, align: 'center' });
 
     doc.end();
   } catch (err) {

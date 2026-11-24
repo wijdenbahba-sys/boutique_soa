@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../../useApi.js';
 import { useT } from '../../i18n.jsx';
 import ChartVentes from '../../components/ChartVentes.jsx';
 import ChartCategories from '../../components/ChartCategories.jsx';
-import { STATUTS, formaterPrix } from '../../utils.js';
+import Sparkline from '../../components/Sparkline.jsx';
+import { SkeletonTableau } from '../../components/Skeleton.jsx';
+import { useEvenements, decrire, ICONES_EVENEMENT } from '../../Evenements.jsx';
+import Icone from '../../icons.jsx';
+import { STATUTS, formaterDate, formaterPrix } from '../../utils.js';
 
 // Tableau de bord de l'administrateur : GET /api/stats + GET /api/produits/alertes + graphiques
 export default function Dashboard() {
@@ -12,22 +16,37 @@ export default function Dashboard() {
   const { t } = useT();
   const [stats, setStats] = useState(null);
   const [alertes, setAlertes] = useState([]);
+  const [ventes, setVentes] = useState([]);
   const [erreur, setErreur] = useState('');
+  const { evenements, connecte, abonner } = useEvenements();
+  const actif = useRef(true);
 
-  useEffect(() => {
-    let annule = false;
-    Promise.all([appeler('/api/stats'), appeler('/api/produits/alertes')])
-      .then(([s, a]) => {
-        if (annule) return;
+  const charger = useCallback(() => {
+    return Promise.all([appeler('/api/stats'), appeler('/api/produits/alertes'), appeler('/api/stats/ventes?jours=14')])
+      .then(([s, a, v]) => {
+        if (!actif.current) return;
         setStats(s);
         setAlertes(a);
+        setVentes(v);
       })
-      .catch((err) => { if (!annule && err.status !== 401) setErreur(err.message); });
-    return () => { annule = true; };
+      .catch((err) => { if (actif.current && err.status !== 401) setErreur(err.message); });
   }, [appeler]);
 
+  useEffect(() => {
+    actif.current = true;
+    charger();
+    return () => { actif.current = false; };
+  }, [charger]);
+
+  // Tableau de bord "en direct" : à chaque événement reçu, les chiffres sont rafraîchis
+  useEffect(() => {
+    let minuterie;
+    const fin = abonner(() => { clearTimeout(minuterie); minuterie = setTimeout(charger, 400); });
+    return () => { fin(); clearTimeout(minuterie); };
+  }, [abonner, charger]);
+
   if (erreur) return <p className="erreur">{erreur}</p>;
-  if (!stats) return <p className="muted">{t('commun.chargement')}</p>;
+  if (!stats) return <SkeletonTableau lignes={5} colonnes={4} />;
 
   return (
     <>
@@ -45,20 +64,48 @@ export default function Dashboard() {
         <div className="card stat">
           <span className="stat-label">{t('dashboard.commandes')}</span>
           <strong className="stat-valeur">{stats.total_commandes}</strong>
+          <Sparkline valeurs={ventes.map((j) => j.commandes)} titre={t('dashboard.tendanceCommandes')} />
         </div>
         <div className="card stat">
           <span className="stat-label">{t('dashboard.chiffreAffaires')}</span>
           <strong className="stat-valeur">{formaterPrix(stats.chiffre_affaires)}</strong>
+          <Sparkline valeurs={ventes.map((j) => j.chiffre_affaires)} titre={t('dashboard.tendanceCA')} />
         </div>
         <div className="card stat">
           <span className="stat-label">{t('dashboard.valeurStock')}</span>
           <strong className="stat-valeur">{formaterPrix(stats.valeur_stock)}</strong>
+        </div>
+        <div className="card stat">
+          <span className="stat-label">{t('dashboard.clients')}</span>
+          <strong className="stat-valeur">{stats.nb_clients ?? 0}</strong>
         </div>
         <Link to="/admin/achats" className="card stat stat-lien">
           <span className="stat-label">{t('dashboard.achatsEnCours')}</span>
           <strong className="stat-valeur">{stats.achats_en_cours}</strong>
         </Link>
       </div>
+
+      <section className="card section-espace">
+        <div className="entete-section">
+          <h2>{t('dashboard.activite')}</h2>
+          <span className={`badge ${connecte ? 'badge-ok' : 'badge-faible'}`}>
+            <span className={`point-live ${connecte ? 'en-ligne' : ''}`} aria-hidden="true" />{connecte ? t('cloche.enDirect') : t('cloche.hors')}
+          </span>
+        </div>
+        {evenements.length === 0 ? (
+          <p className="muted">{t('dashboard.activiteVide')}</p>
+        ) : (
+          <ul className="flux flux-large">
+            {evenements.slice(0, 7).map((ev) => (
+              <li key={ev.id}>
+                <span className={`flux-icone flux-${ev.type.split('.')[0]}`}><Icone nom={ICONES_EVENEMENT[ev.type] || 'cloche'} taille={16} /></span>
+                <span>{decrire(ev, t)}</span>
+                <span className="muted petit">{formaterDate(ev.date)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <ChartVentes />
 

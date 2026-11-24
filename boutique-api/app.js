@@ -15,6 +15,17 @@ const statsRoutes = require('./routes/stats');
 const mouvementsRoutes = require('./routes/mouvements');
 const fournisseursRoutes = require('./routes/fournisseurs');
 const achatsRoutes = require('./routes/achats');
+const favorisRoutes = require('./routes/favoris');
+const avisRoutes = require('./routes/avis');
+const codesPromoRoutes = require('./routes/codesPromo');
+const exportRoutes = require('./routes/export');
+const evenementsRoutes = require('./routes/evenements');
+const clesApiRoutes = require('./routes/clesApi');
+const partenaireRoutes = require('./routes/partenaire');
+const webhooksRoutes = require('./routes/webhooks');
+const auditRoutes = require('./routes/audit');
+const emailsRoutes = require('./routes/emails');
+const { dossierUploads } = require('./utils/images');
 
 const app = express();
 
@@ -30,13 +41,19 @@ const origines = process.env.CORS_ORIGIN
   : true; // sans configuration (développement) : toutes les origines
 app.use(cors({ origin: origines }));
 
+// Images des produits : servies avant la limitation de débit (une page de catalogue en charge des dizaines)
+app.use('/uploads', express.static(dossierUploads(), { maxAge: '7d', index: false, dotfiles: 'ignore' }));
+
+// L'import en masse de produits (jusqu'à 500 lignes) a droit à un corps plus gros que le reste de l'API.
+// body-parser ignore ensuite la requête (déjà lue) dans le parseur global ci-dessous.
+app.use('/api/produits/import', express.json({ limit: '1mb' }));
 app.use(express.json({ limit: '100kb' }));
 app.use(limiteGlobal);
 
 app.get('/', (req, res) => {
   res.json({
     message: "API de gestion d'inventaire - Boutique en ligne",
-    version: '2.0.0',
+    version: '4.0.0',
     documentation: '/api-docs',
   });
 });
@@ -55,6 +72,17 @@ app.use('/api/stats', statsRoutes);
 app.use('/api/mouvements', mouvementsRoutes);
 app.use('/api/fournisseurs', fournisseursRoutes);
 app.use('/api/achats', achatsRoutes);
+app.use('/api/favoris', favorisRoutes);
+app.use('/api/avis', avisRoutes);
+app.use('/api/codes-promo', codesPromoRoutes);
+app.use('/api/export', exportRoutes);
+require('./services/abonnes').demarrer();
+app.use('/api/evenements', evenementsRoutes);
+app.use('/api/cles-api', clesApiRoutes);
+app.use('/api/partenaire', partenaireRoutes);
+app.use('/api/webhooks', webhooksRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/emails', emailsRoutes);
 
 // Route inconnue
 app.use((req, res) => {

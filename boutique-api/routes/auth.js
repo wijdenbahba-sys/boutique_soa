@@ -10,5 +10,8 @@ const router = express.Router();
 router.post('/register', limiteInscription, valider(schemas.register), ctrl.register);
 router.post('/login', limiteLogin, valider(schemas.login), ctrl.login);
 router.get('/me', verifierToken, ctrl.me);
+router.put('/profil', verifierToken, valider(schemas.profil), ctrl.modifierProfil);
+// limiteLogin : seuls les échecs comptent, ça bloque la devinette de l'ancien mot de passe avec un token volé
+router.put('/mot-de-passe', verifierToken, limiteLogin, valider(schemas.motDePasse), ctrl.changerMotDePasse);
 
 module.exports = router;

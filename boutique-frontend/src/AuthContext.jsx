@@ -50,7 +50,12 @@ export function AuthProvider({ children }) {
     setSession({ token: null, user: null });
   }
 
-  const valeur = { token: session.token, user: session.user, login, register, logout };
+  // Après une modification du profil : on garde le même token, on met à jour l'utilisateur affiché
+  function majUtilisateur(user) {
+    sauvegarder(session.token, user);
+  }
+
+  const valeur = { token: session.token, user: session.user, login, register, logout, majUtilisateur };
   return <AuthContext.Provider value={valeur}>{children}</AuthContext.Provider>;
 }
 

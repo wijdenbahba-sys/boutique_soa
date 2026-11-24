@@ -10,6 +10,14 @@ CREATE DATABASE IF NOT EXISTS boutique_db
 USE boutique_db;
 
 -- Pour pouvoir relancer le script sans erreur
+DROP TABLE IF EXISTS emails;
+DROP TABLE IF EXISTS journal_audit;
+DROP TABLE IF EXISTS webhook_livraisons;
+DROP TABLE IF EXISTS webhooks;
+DROP TABLE IF EXISTS api_keys;
+DROP TABLE IF EXISTS avis;
+DROP TABLE IF EXISTS favoris;
+DROP TABLE IF EXISTS codes_promo;
 DROP TABLE IF EXISTS achats_lignes;
 DROP TABLE IF EXISTS achats;
 DROP TABLE IF EXISTS fournisseurs;
@@ -69,7 +77,17 @@ CREATE TABLE commandes (
   user_id        INT NOT NULL,
   statut         ENUM('en_attente', 'confirmee', 'expediee', 'livree', 'annulee')
                  NOT NULL DEFAULT 'en_attente',
-  total          DECIMAL(10,2) NOT NULL DEFAULT 0,
+  total          DECIMAL(10,2) NOT NULL DEFAULT 0,       -- total final, après remise éventuelle
+  code_promo     VARCHAR(40)   NULL,
+  remise         DECIMAL(10,2) NOT NULL DEFAULT 0,
+  adresse_livraison VARCHAR(255) NULL,
+  ville          VARCHAR(80)   NULL,
+  telephone      VARCHAR(30)   NULL,
+  mode_paiement  ENUM('livraison', 'carte') NOT NULL DEFAULT 'livraison',
+  statut_paiement ENUM('en_attente', 'paye', 'echoue', 'rembourse') NOT NULL DEFAULT 'en_attente',
+  paiement_marque     VARCHAR(20) NULL,    -- Visa, Mastercard... (jamais le numéro complet)
+  paiement_last4      CHAR(4)     NULL,
+  paiement_reference  VARCHAR(40) NULL,
   date_commande  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_commande_user
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -157,6 +175,115 @@ CREATE TABLE IF NOT EXISTS achats_lignes (
 ) ENGINE=InnoDB;
 
 -- ------------------------------------------------------------
+-- Table : favoris (liste de souhaits d'un client)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS favoris (
+  user_id     INT NOT NULL,
+  produit_id  INT NOT NULL,
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, produit_id),
+  CONSTRAINT fk_fav_user    FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE CASCADE,
+  CONSTRAINT fk_fav_produit FOREIGN KEY (produit_id) REFERENCES produits(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ------------------------------------------------------------
+-- Table : codes_promo (réductions applicables au panier)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS codes_promo (
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  code             VARCHAR(40) NOT NULL UNIQUE,
+  type             ENUM('pourcentage', 'montant') NOT NULL,
+  valeur           DECIMAL(10,2) NOT NULL,
+  min_commande     DECIMAL(10,2) NOT NULL DEFAULT 0,
+  date_expiration  DATE NULL,
+  utilisations_max INT NULL,
+  utilisations     INT NOT NULL DEFAULT 0,
+  actif            TINYINT(1) NOT NULL DEFAULT 1
+) ENGINE=InnoDB;
+
+-- ------------------------------------------------------------
+-- Table : avis (note de 1 à 5 + commentaire, un seul avis par client et par produit)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS avis (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  produit_id   INT NOT NULL,
+  user_id      INT NOT NULL,
+  note         TINYINT NOT NULL,
+  commentaire  TEXT NULL,
+  created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_avis_produit_user (produit_id, user_id),
+  CONSTRAINT fk_avis_produit FOREIGN KEY (produit_id) REFERENCES produits(id) ON DELETE CASCADE,
+  CONSTRAINT fk_avis_user    FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ------------------------------------------------------------
+-- v4 : clés API, webhooks, journal d'audit, emails
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS api_keys (
+  id                    INT AUTO_INCREMENT PRIMARY KEY,
+  nom                   VARCHAR(100) NOT NULL,
+  prefixe               VARCHAR(20)  NOT NULL,              -- début de la clé, pour la reconnaître dans la liste
+  cle_hash              CHAR(64)     NOT NULL UNIQUE,       -- SHA-256 de la clé (la clé en clair n'est JAMAIS stockée)
+  actif                 TINYINT(1)   NOT NULL DEFAULT 1,
+  nb_appels             INT          NOT NULL DEFAULT 0,
+  derniere_utilisation  TIMESTAMP    NULL,
+  created_by            INT          NULL,
+  created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_apikey_user FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS webhooks (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  url         VARCHAR(500) NOT NULL,
+  evenements  VARCHAR(500) NOT NULL DEFAULT '*',            -- liste séparée par des virgules, '*' = tous
+  secret      VARCHAR(100) NOT NULL,                        -- sert à signer les envois (HMAC-SHA256)
+  actif       TINYINT(1)   NOT NULL DEFAULT 1,
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS webhook_livraisons (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  webhook_id   INT NOT NULL,
+  evenement    VARCHAR(60) NOT NULL,
+  statut_http  INT NULL,
+  succes       TINYINT(1) NOT NULL DEFAULT 0,
+  duree_ms     INT NULL,
+  reponse      VARCHAR(500) NULL,
+  tentative    INT NOT NULL DEFAULT 1,
+  created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_livraison_webhook (webhook_id, id),
+  CONSTRAINT fk_livraison_webhook FOREIGN KEY (webhook_id) REFERENCES webhooks(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS journal_audit (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  user_id     INT NULL,
+  user_nom    VARCHAR(100) NULL,
+  action      VARCHAR(60)  NOT NULL,
+  entite      VARCHAR(40)  NOT NULL,
+  entite_id   INT NULL,
+  details     JSON NULL,
+  ip          VARCHAR(64) NULL,
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_audit_entite (entite, created_at),
+  INDEX idx_audit_date (created_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS emails (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  destinataire  VARCHAR(255) NOT NULL,
+  sujet         VARCHAR(255) NOT NULL,
+  corps_html    MEDIUMTEXT NOT NULL,
+  type          VARCHAR(40)  NOT NULL,
+  commande_id   INT NULL,
+  statut        ENUM('envoye', 'simule', 'echec') NOT NULL,
+  erreur        VARCHAR(500) NULL,
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_emails_date (created_at),
+  CONSTRAINT fk_email_commande FOREIGN KEY (commande_id) REFERENCES commandes(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- ------------------------------------------------------------
 -- Index utiles
 -- ------------------------------------------------------------
 CREATE INDEX idx_produits_categorie ON produits(category_id);
@@ -181,3 +308,7 @@ INSERT INTO produits (nom, description, prix, stock, seuil_alerte, category_id) 
 INSERT INTO fournisseurs (nom, email, telephone, adresse) VALUES
   ('TechDistrib Tunisie', 'contact@techdistrib.tn', '71 000 111', 'Tunis'),
   ('Maison & Co',         'ventes@maisonco.tn',     '73 222 333', 'Sousse');
+
+INSERT INTO codes_promo (code, type, valeur, min_commande) VALUES
+  ('BIENVENUE10', 'pourcentage', 10, 0),
+  ('SOLDES5',     'montant',      5, 30);

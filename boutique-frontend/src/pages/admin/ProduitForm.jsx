@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useApi } from '../../useApi.js';
 import { useT } from '../../i18n.jsx';
+import { imageSrc } from '../../api.js';
 
 // Formulaire d'ajout (/admin/produits/nouveau) et de modification (/admin/produits/:id)
 export default function ProduitForm() {
@@ -18,6 +19,9 @@ export default function ProduitForm() {
   const [chargement, setChargement] = useState(modification);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState('');
+  const [fichier, setFichier] = useState(null); // image choisie (envoyée après l'enregistrement du produit)
+  const [apercu, setApercu] = useState('');
+  const [imageSupprimee, setImageSupprimee] = useState(false);
 
   useEffect(() => {
     let annule = false;
@@ -67,16 +71,25 @@ export default function ProduitForm() {
       prix,
       stock,
       seuil_alerte: seuil,
-      image_url: champs.image_url.trim(),
       category_id: champs.category_id ? Number(champs.category_id) : null,
     };
 
     setEnvoi(true);
     try {
+      let produitId = id;
       if (modification) {
         await appeler(`/api/produits/${id}`, { method: 'PUT', body: corps });
       } else {
-        await appeler('/api/produits', { method: 'POST', body: corps });
+        const cree = await appeler('/api/produits', { method: 'POST', body: corps });
+        produitId = cree.id;
+      }
+      // L'image est un fichier : elle part dans une requête séparée (multipart)
+      if (fichier) {
+        const donnees = new FormData();
+        donnees.append('image', fichier);
+        await appeler(`/api/produits/${produitId}/image`, { method: 'POST', body: donnees });
+      } else if (imageSupprimee) {
+        await appeler(`/api/produits/${produitId}/image`, { method: 'DELETE' });
       }
       navigate('/admin/produits', {
         state: { succes: t(modification ? 'form.modifie' : 'form.ajoute', { nom: corps.nom }) },
@@ -125,10 +138,37 @@ export default function ProduitForm() {
             <input type="number" step="1" min="0" value={champs.seuil_alerte} onChange={modifier('seuil_alerte')} required />
           </label>
         </div>
-        <label>
-          {t('form.image')}
-          <input type="url" placeholder="https://..." value={champs.image_url} onChange={modifier('image_url')} />
-        </label>
+        <div className="upload">
+          {(apercu || (champs.image_url && !imageSupprimee)) && (
+            <img src={apercu || imageSrc(champs.image_url)} alt={t('form.apercu')} />
+          )}
+          <div style={{ display: 'grid', gap: '0.4rem' }}>
+            <label>
+              {t('form.image')}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] || null;
+                  if (f && f.size > 2 * 1024 * 1024) { setErreur(t('form.imageTrop')); e.target.value = ''; return; }
+                  setErreur(''); setFichier(f); setImageSupprimee(false);
+                  setApercu(f ? URL.createObjectURL(f) : '');
+                }}
+              />
+            </label>
+            <span className="muted petit">{t('form.imageAide')}</span>
+            {(champs.image_url || apercu) && !imageSupprimee && (
+              <button
+                type="button"
+                className="btn btn-light btn-small btn-danger"
+                style={{ justifySelf: 'start' }}
+                onClick={() => { setFichier(null); setApercu(''); setImageSupprimee(Boolean(champs.image_url)); }}
+              >
+                {t('form.retirerImage')}
+              </button>
+            )}
+          </div>
+        </div>
 
         {erreur && <p className="erreur">{erreur}</p>}
         <div className="actions-ligne">

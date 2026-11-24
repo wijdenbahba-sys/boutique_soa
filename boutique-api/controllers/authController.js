@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
+const { journaliser } = require('../utils/audit');
 
 // POST /api/auth/register
 exports.register = async (req, res, next) => {
@@ -38,6 +39,7 @@ exports.login = async (req, res, next) => {
 
     // Même message dans les deux cas pour ne pas révéler si l'email existe
     if (!user || !(await bcrypt.compare(mot_de_passe, user.mot_de_passe))) {
+      await journaliser(req, { action: 'connexion_echec', entite: 'utilisateur', entite_id: user ? user.id : null, details: { email } });
       return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
     }
 
@@ -47,6 +49,10 @@ exports.login = async (req, res, next) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || '1d' }
     );
 
+    if (user.role === 'admin') {
+      req.auditUser = { id: user.id, nom: user.nom };
+      await journaliser(req, { action: 'connexion', entite: 'utilisateur', entite_id: user.id });
+    }
     res.json({
       token,
       user: { id: user.id, nom: user.nom, email: user.email, role: user.role },
@@ -67,6 +73,44 @@ exports.me = async (req, res, next) => {
       return res.status(404).json({ message: 'Utilisateur introuvable' });
     }
     res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/auth/profil   body : { "nom": "...", "email": "..." }
+exports.modifierProfil = async (req, res, next) => {
+  try {
+    const { nom, email } = req.body;
+    const [result] = await pool.query('UPDATE users SET nom = ?, email = ? WHERE id = ?', [nom, email, req.user.id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Utilisateur introuvable' });
+    }
+    const [rows] = await pool.query('SELECT id, nom, email, role FROM users WHERE id = ?', [req.user.id]);
+    res.json({ message: 'Profil mis à jour', user: rows[0] });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: 'Cet email est déjà utilisé' });
+    }
+    next(err);
+  }
+};
+
+// PUT /api/auth/mot-de-passe   body : { "ancien": "...", "nouveau": "..." }
+exports.changerMotDePasse = async (req, res, next) => {
+  try {
+    const { ancien, nouveau } = req.body;
+    const [rows] = await pool.query('SELECT mot_de_passe FROM users WHERE id = ?', [req.user.id]);
+    if (!rows[0]) {
+      return res.status(404).json({ message: 'Utilisateur introuvable' });
+    }
+    if (!(await bcrypt.compare(ancien, rows[0].mot_de_passe))) {
+      return res.status(400).json({ message: 'Ancien mot de passe incorrect' });
+    }
+    const hash = await bcrypt.hash(nouveau, 10);
+    await pool.query('UPDATE users SET mot_de_passe = ? WHERE id = ?', [hash, req.user.id]);
+    await journaliser(req, { action: 'changer_mot_de_passe', entite: 'utilisateur', entite_id: req.user.id });
+    res.json({ message: 'Mot de passe modifié' });
   } catch (err) {
     next(err);
   }
